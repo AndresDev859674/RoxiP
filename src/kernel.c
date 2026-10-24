@@ -73,7 +73,7 @@ static void run_arm_bootloader(void) {
         vga_draw_string(" \\  / ", logo_color, 37, 6);
         vga_draw_string("  \\/  ", logo_color, 37, 7);
 
-        vga_draw_string("=== RoxiP Bootloader v0.2 (Core) ===", title_color, 20, 9);
+        vga_draw_string("=== RoxiP Bootloader v0.1 (Core) ===", title_color, 20, 9);
 
         unsigned char opt1_color = (selected_option == 0) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
         unsigned char opt2_color = (selected_option == 1) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);

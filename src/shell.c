@@ -190,6 +190,11 @@ static void execute_lsblk(void) {
 }
 
 void execute_stat(const char* filename) {
+    if (filename[0] == '\0') {
+        term_add_line("Usage: stat <filename|@node>");
+        return;
+    }
+
     if (filename[0] == '@') {
         const char* node_data = fs_read_file(filename);
         if (node_data) {
@@ -221,6 +226,11 @@ void execute_stat(const char* filename) {
 }
 
 void execute_xxd(const char* filename) {
+    if (filename[0] == '\0') {
+        term_add_line("Usage: xxd <filename|@node>");
+        return;
+    }
+
     const char* data = fs_read_file(filename);
     if (!data) {
         term_add_line("xxd: File or node not found");
@@ -416,6 +426,11 @@ void execute_disasm(const char* arg) {
 }
 
 void execute_ecr_script(const char* filename) {
+    if (filename[0] == '\0') {
+        term_add_line("Usage: ecr <filename.ecr>");
+        return;
+    }
+
     const char* script = fs_read_file(filename);
     if (!script) {
         term_add_line("ecr: Script file not found or empty");
@@ -529,6 +544,7 @@ void execute_command(const char* cmd) {
         if (mode_id >= 1 && mode_id <= 4) { comcow_set_mode(mode_id); term_add_line("comcow: Display mode switched successfully."); }
         else term_add_line("comcow: Invalid mode_id. Type 'comcow modes'");
     }
+    else if (strcmp(cmd, "echo") == 0) term_add_line("Usage: echo <text>");
     else if (strncmp(cmd, "echo ", 5) == 0) {
         const char* echo_arg = cmd + 5; int redirect_pos = -1;
         for (int i = 0; echo_arg[i] != '\0'; i++) if (echo_arg[i] == '>') { redirect_pos = i; break; }
@@ -576,6 +592,7 @@ void execute_command(const char* cmd) {
             }
         }
     }
+    else if (strcmp(cmd, "set") == 0) term_add_line("Usage: set KEY=VALUE");
     else if (strncmp(cmd, "set ", 4) == 0) {
         const char* args = cmd + 4;
         char key[MAX_ENV_KEY], val[MAX_ENV_VAL];
@@ -603,6 +620,7 @@ void execute_command(const char* cmd) {
             else term_add_line("ENV Error: Storage full.");
         } else term_add_line("Usage: set KEY=VALUE");
     }
+    else if (strcmp(cmd, "unset") == 0) term_add_line("Usage: unset KEY");
     else if (strncmp(cmd, "unset ", 6) == 0) {
         if (env_unset(cmd + 6)) term_add_line("ENV: Variable removed.");
         else term_add_line("ENV: Variable not found.");
@@ -623,18 +641,24 @@ void execute_command(const char* cmd) {
         } else term_add_line("RGB Software Error: Memory Allocation Failed.");
     }
     else if (strcmp(cmd, "ztop") == 0) current_mode = MODE_ZTOP;
+    else if (strcmp(cmd, "mkdir") == 0) term_add_line("Usage: mkdir <dirname>");
     else if (strncmp(cmd, "mkdir ", 6) == 0) {
         if (fs_mkdir(cmd + 6)) term_add_line("FS: Directory created.");
         else term_add_line("FS Error: Directory exists or table full.");
     }
+    else if (strcmp(cmd, "micro") == 0) term_add_line("Usage: micro <filename>");
     else if (strncmp(cmd, "micro ", 6) == 0) {
         const char* fname = cmd + 6;
         if (fname[0] != '\0') open_micro_editor(fname);
         else term_add_line("Usage: micro <filename>");
     }
+    else if (strcmp(cmd, "stat") == 0) execute_stat("");
     else if (strncmp(cmd, "stat ", 5) == 0) execute_stat(cmd + 5);
+    else if (strcmp(cmd, "xxd") == 0) execute_xxd("");
     else if (strncmp(cmd, "xxd ", 4) == 0) execute_xxd(cmd + 4);
+    else if (strcmp(cmd, "disasm") == 0) execute_disasm("");
     else if (strncmp(cmd, "disasm ", 7) == 0) execute_disasm(cmd + 7);
+    else if (strcmp(cmd, "ecr") == 0) execute_ecr_script("");
     else if (strncmp(cmd, "ecr ", 4) == 0) execute_ecr_script(cmd + 4);
     else if (cmd_len > 4 && strcmp(cmd + cmd_len - 4, ".ecr") == 0) execute_ecr_script(cmd);
     else if (strcmp(cmd, "whatweus") == 0 || strcmp(cmd, "fetch") == 0) execute_whatweus();
@@ -685,6 +709,7 @@ void execute_command(const char* cmd) {
         }
         term_add_line("@cpu, @ram, @gpu, @fb0, @vfs         SYNTHETIC NODES");
     }
+    else if (strcmp(cmd, "cat") == 0) term_add_line("Usage: cat <filename|@node>");
     else if (strncmp(cmd, "cat ", 4) == 0) {
         const char* target = cmd + 4;
         const char* data = fs_read_file(target);
@@ -728,6 +753,58 @@ void execute_command(const char* cmd) {
 void process_char_input(char c) {
     if (c == '\r') c = '\n';
 
+    /* Handling input for micro Editor Mode */
+    if (current_mode == MODE_MICRO_EDITOR) {
+        /* Ctrl+X (24), Ctrl+Q (17), or ESC (27) -> Exit Editor */
+        if (c == 24 || c == 17 || c == 27) {
+            current_mode = MODE_PERF_CLI;
+            term_add_line("micro: Exited text editor.");
+            redraw_current_view();
+            return;
+        }
+        /* Ctrl+S (19) or Ctrl+O (15) -> Save file to VFS */
+        if (c == 19 || c == 15) {
+            if (micro_filename[0] != '\0') {
+                if (fs_write_file(micro_filename, micro_buffer)) {
+                    term_add_line("micro: File saved successfully.");
+                } else {
+                    term_add_line("micro Error: Failed to save file.");
+                }
+            }
+            redraw_current_view();
+            return;
+        }
+        /* Backspace / Delete */
+        if (c == '\b' || c == 127) {
+            if (micro_pos > 0) {
+                micro_pos--;
+                micro_buffer[micro_pos] = '\0';
+            }
+            redraw_current_view();
+            return;
+        }
+        /* Newline */
+        if (c == '\n') {
+            if (micro_pos < MAX_FILE_CONTENT - 1) {
+                micro_buffer[micro_pos++] = '\n';
+                micro_buffer[micro_pos] = '\0';
+            }
+            redraw_current_view();
+            return;
+        }
+        /* Printable characters */
+        if (c >= 32 && c <= 126) {
+            if (micro_pos < MAX_FILE_CONTENT - 1) {
+                micro_buffer[micro_pos++] = c;
+                micro_buffer[micro_pos] = '\0';
+            }
+            redraw_current_view();
+            return;
+        }
+        return;
+    }
+
+    /* Existing modes handling */
     if ((c == 27 || c == 'q' || c == 'Q') && (current_mode == MODE_FLOATCUBE || current_mode == MODE_ZTOP)) {
         current_mode = MODE_PERF_CLI; redraw_current_view(); return;
     }

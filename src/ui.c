@@ -300,24 +300,57 @@ void render_ztop_frame(void) {
 
 void render_micro_editor(void) {
     vga_clear(make_color(COLOR_BLACK, COLOR_BLUE));
+
+    /* Top header bar */
     unsigned char top_color = make_color(COLOR_BLACK, COLOR_LIGHT_GREY);
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', top_color, x, 0);
     vga_draw_string(" micro - ", top_color, 1, 0);
     vga_draw_string(micro_filename[0] ? micro_filename : "Untitled", top_color, 10, 0);
 
+    /* Bottom status bar */
     unsigned char bot_color = make_color(COLOR_BLACK, COLOR_CYAN);
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bot_color, x, 24);
-    vga_draw_string(" Ctrl+S: Save  |  Ctrl+X: Exit ", bot_color, 1, 24);
+    vga_draw_string(" Ctrl+O / Ctrl+S: Save  |  ESC / Ctrl+Q / Ctrl+X: Exit ", bot_color, 1, 24);
 
-    int cur_x = 2, cur_y = 2;
+    unsigned char num_color = make_color(COLOR_LIGHT_GREY, COLOR_BLUE);
+
+    int line_num = 1;
+    int cur_x = 5, cur_y = 2;
     int in_comment = 0;
     int in_string = 0;
+
+    /* Render initial line number (Line 1) */
+    char num_str[16];
+    char formatted[16];
+    int_to_str(line_num, num_str);
+    int l_len = strlen(num_str);
+
+    if (l_len == 1) { formatted[0] = ' '; formatted[1] = ' '; formatted[2] = num_str[0]; }
+    else if (l_len == 2) { formatted[0] = ' '; formatted[1] = num_str[0]; formatted[2] = num_str[1]; }
+    else { formatted[0] = num_str[0]; formatted[1] = num_str[1]; formatted[2] = num_str[2]; }
+    formatted[3] = ' ';
+    formatted[4] = '\0';
+    vga_draw_string(formatted, num_color, 0, cur_y);
 
     for (int i = 0; i < micro_pos; i++) {
         char ch = micro_buffer[i];
         if (ch == '\n') {
-            cur_y++; cur_x = 2;
-            in_comment = 0; in_string = 0;
+            cur_y++;
+            line_num++;
+            cur_x = 5;
+            in_comment = 0;
+            in_string = 0;
+
+            if (cur_y < 24) {
+                int_to_str(line_num, num_str);
+                l_len = strlen(num_str);
+                if (l_len == 1) { formatted[0] = ' '; formatted[1] = ' '; formatted[2] = num_str[0]; }
+                else if (l_len == 2) { formatted[0] = ' '; formatted[1] = num_str[0]; formatted[2] = num_str[1]; }
+                else { formatted[0] = num_str[0]; formatted[1] = num_str[1]; formatted[2] = num_str[2]; }
+                formatted[3] = ' ';
+                formatted[4] = '\0';
+                vga_draw_string(formatted, num_color, 0, cur_y);
+            }
         } else {
             if (ch == '#') in_comment = 1;
             if (ch == '"') in_string = !in_string;
@@ -344,11 +377,14 @@ void render_micro_editor(void) {
                 }
             }
 
-            vga_draw_char_at(ch, text_color, cur_x, cur_y);
+            if (cur_y < 24 && cur_x < VGA_WIDTH - 1) {
+                vga_draw_char_at(ch, text_color, cur_x, cur_y);
+            }
             cur_x++;
-            if (cur_x >= VGA_WIDTH - 2) { cur_y++; cur_x = 2; }
+            if (cur_x >= VGA_WIDTH - 2) { cur_y++; cur_x = 5; }
         }
     }
+
     set_hardware_cursor(cur_x, cur_y);
     vga_flush();
 }

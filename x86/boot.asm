@@ -1,5 +1,5 @@
 ; ==============================================================================
-; RoxiP Bootloader v0.2 - Interactive Menu, Purple Logo & 10s Auto-Boot
+; RoxiP Bootloader v0.1 - Interactive Menu, Purple Logo & 10s Auto-Boot
 ; Target: x86 Bare-Metal MBR Bootsector (512 Bytes)
 ; ==============================================================================
 
@@ -333,7 +333,7 @@ logo_l4      db '\', " ", '\', "/ /", 0
 logo_l5      db " ", '\', "  / ", 0
 logo_l6      db "  ", '\', "/  ", 0
 
-boot_msg     db "=== RoxiP Bootloader v0.2 ===", 0
+boot_msg     db "=== RoxiP Bootloader v1 ===", 0
 opt1_msg     db "[1] Boot RoxiP OS", 0
 opt2_msg     db "[2] Reboot System", 0
 timer_prefix db "Auto-booting in ", 0

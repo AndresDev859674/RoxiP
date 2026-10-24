@@ -27,7 +27,7 @@ typedef struct {
 } storage_header_t;
 
 static void print_usage(const char* prog_name) {
-    printf("RoxiP Tools v0.2\n");
+    printf("RoxiP Tools v0.1\n");
     printf("Usage:\n");
     printf("  %s create <storage_path> <size_mb>\n", prog_name);
     printf("  %s list   <storage_path>\n", prog_name);
