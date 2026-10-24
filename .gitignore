@@ -2,4 +2,10 @@
 
 src/*.o
 
-roxip-storage
+roxip.storage
+
+*.elf 
+
+*.bin 
+
+roxip-cli
