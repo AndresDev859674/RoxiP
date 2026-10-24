@@ -283,4 +283,10 @@ void execute_stat(const char* filename);
 void execute_xxd(const char* filename);
 void execute_ecr_script(const char* filename);
 
+/* Memory Prototypes */
+void* memset(void* dest, int c, unsigned int n);
+void* memcpy(void* dest, const void* src, unsigned int n);
+void* memmove(void* dest, const void* src, unsigned int n);
+int memcmp(const void* s1, const void* s2, unsigned int n);
+
 #endif

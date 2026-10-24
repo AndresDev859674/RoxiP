@@ -2,17 +2,40 @@
 
 block_header_t* free_list = 0;
 
-void* memset(void* dest, int c, unsigned int n) {
+__attribute__((used)) void* memset(void* dest, int c, unsigned int n) {
     unsigned char* p = (unsigned char*)dest;
     while (n--) *p++ = (unsigned char)c;
     return dest;
 }
 
-void* memcpy(void* dest, const void* src, unsigned int n) {
+__attribute__((used)) void* memcpy(void* dest, const void* src, unsigned int n) {
     unsigned char* d = (unsigned char*)dest;
     const unsigned char* s = (const unsigned char*)src;
     while (n--) *d++ = *s++;
     return dest;
+}
+
+__attribute__((used)) void* memmove(void* dest, const void* src, unsigned int n) {
+    unsigned char* d = (unsigned char*)dest;
+    const unsigned char* s = (const unsigned char*)src;
+    if (d < s) {
+        while (n--) *d++ = *s++;
+    } else {
+        d += n;
+        s += n;
+        while (n--) *--d = *--s;
+    }
+    return dest;
+}
+
+__attribute__((used)) int memcmp(const void* s1, const void* s2, unsigned int n) {
+    const unsigned char* p1 = (const unsigned char*)s1;
+    const unsigned char* p2 = (const unsigned char*)s2;
+    while (n--) {
+        if (*p1 != *p2) return *p1 - *p2;
+        p1++; p2++;
+    }
+    return 0;
 }
 
 int strcmp(const char* s1, const char* s2) {

@@ -82,7 +82,7 @@ static void run_arm_bootloader(void) {
         vga_draw_string(selected_option == 1 ? " > [2] Reboot System   " : "   [2] Reboot System   ", opt2_color, 28, 14);
 
         char timer_str[80] = "Auto-booting in ";
-        char sec_buf[8]; int_to_str(seconds_remaining, sec_buf);
+        char sec_buf[16]; int_to_str(seconds_remaining, sec_buf);
         strcpy(timer_str + 16, sec_buf);
         strcpy(timer_str + 16 + strlen(sec_buf), "s... (Arrows=Select, ENTER=Confirm)");
 

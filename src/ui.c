@@ -268,7 +268,7 @@ void render_ztop_frame(void) {
     for (int i = 0; i < 6; i++) {
         int y = 6 + i;
         unsigned char proc_color = (i % 2 == 0) ? make_color(COLOR_WHITE, COLOR_BLACK) : make_color(COLOR_LIGHT_GREY, COLOR_BLACK);
-        char pid_s[8], cpu_s[8], mem_s[8];
+        char pid_s[16], cpu_s[16], mem_s[16];
         int_to_str(procs[i].pid, pid_s); int_to_str(procs[i].cpu_usage, cpu_s); int_to_str(procs[i].mem_kb, mem_s);
         vga_draw_string(pid_s, proc_color, 4, y);
         vga_draw_string(procs[i].user, proc_color, 9, y);
