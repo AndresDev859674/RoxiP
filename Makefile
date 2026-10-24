@@ -29,19 +29,23 @@ ifeq ($(BUILD_CLI),1)
     TARGETS += roxip-cli
 endif
 
-.PHONY: all bin elf cli run qemu debug clean clean-all
+.PHONY: all bin elf cli img img-run run qemu debug clean clean-all
 
-# Default target: compile kernel binary
+# Default target
 all: $(TARGETS)
 
-# Compile raw flat binary ONLY
+# Target for raw binary only
 bin: roxip.bin
 
-# Compile ELF executable ONLY
+# Target for ELF output only
 elf: roxip.elf
 
-# Compile host CLI tool ONLY
+# Target for host CLI tool only
 cli: roxip-cli
+
+# Host CLI Tool Build Rule
+roxip-cli: src/cli/roxip-cli.c
+	$(HOST_CC) -O2 -Wall -Wextra src/cli/roxip-cli.c -o roxip-cli
 
 # Assembly Startup Rule
 startup.o: startup.s
@@ -51,14 +55,33 @@ startup.o: startup.s
 src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Link via GCC Driver to properly pass LTO plugin and handle libgcc automatically
+# Link via GCC Driver
 roxip.elf: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -Wl,-T,linker.ld -nostdlib -lgcc -o roxip.elf
 
 roxip.bin: roxip.elf
 	$(OBJCOPY) -O binary roxip.elf roxip.bin
 
-# Emulate in QEMU
+# Target for packaging Monolithic System Image
+img: roxip.bin
+	@echo "[IMG] Ensuring persistent storage file exists..."
+	@if [ ! -f roxip.storage ]; then \
+		if [ -f ./roxip-cli ]; then \
+			./roxip-cli create roxip.storage 64; \
+		else \
+			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
+		fi; \
+	fi
+	@echo "[IMG] Generating roxip.img as raw storage image..."
+	@cp roxip.storage roxip.img
+	@echo "[IMG] System image roxip.img ready."
+
+# Run monolithic .img directly in QEMU
+img-run: img
+	@echo "[QEMU] Booting RoxiP Kernel with roxip.img storage..."
+	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.img,if=pflash,format=raw -vga none -serial stdio
+
+# Emulate in QEMU (Standard mode)
 run qemu: roxip.bin
 	@if [ ! -f roxip.storage ]; then \
 		if [ -f ./roxip-cli ]; then \
@@ -80,7 +103,7 @@ debug: roxip.bin
 	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -gdb tcp::$(GDB_PORT) -S
 
 clean:
-	rm -f src/*.o *.o *.elf *.bin roxip-cli
+	rm -f src/*.o *.o *.elf *.bin roxip-cli roxip.img
 
 clean-all: clean
 	rm -f roxip.storage

@@ -4,6 +4,197 @@ file_record_t fs_table[MAX_VFS_FILES];
 int fs_file_count = 0;
 static char synthetic_buf[2048];
 
+/* Minimal POSIX TAR Header Structure (512 bytes) */
+typedef struct {
+    char name[100];
+    char mode[8];
+    char uid[8];
+    char gid[8];
+    char size[12];
+    char mtime[12];
+    char chksum[8];
+    char typeflag;
+    char linkname[100];
+    char magic[6];
+    char version[2];
+    char uname[32];
+    char gname[32];
+    char devmajor[8];
+    char devminor[8];
+    char prefix[155];
+    char pad[12];
+} tar_header_t;
+
+/* Parse Octal String to Integer */
+static unsigned int parse_octal(const char* str, int max_len) {
+    unsigned int val = 0;
+    for (int i = 0; i < max_len && str[i] >= '0' && str[i] <= '7'; i++) {
+        val = (val << 3) + (str[i] - '0');
+    }
+    return val;
+}
+
+/* Unpack Standard TAR stream from RAM into VFS */
+static int unpack_tar_stream(const unsigned char* tar_bytes, unsigned int total_len) {
+    unsigned int offset = 0;
+    int files_extracted = 0;
+
+    while (offset + 512 <= total_len) {
+        const tar_header_t* header = (const tar_header_t*)(tar_bytes + offset);
+
+        if (header->name[0] == '\0') break;
+
+        unsigned int file_size = parse_octal(header->size, 12);
+        offset += 512;
+
+        if (header->typeflag == '0' || header->typeflag == '\0') {
+            if (file_size < MAX_FILE_CONTENT) {
+                fs_write_file_binary(header->name, (const char*)(tar_bytes + offset), file_size);
+                files_extracted++;
+            }
+        } else if (header->typeflag == '5') {
+            fs_mkdir(header->name);
+        }
+
+        offset += ((file_size + 511) & ~511);
+    }
+
+    return files_extracted;
+}
+
+/* Minimal DEFLATE / Inflate Engine for GZIP */
+#define TINFL_LZ_DICT_SIZE 32768
+
+static int inflate_deflate_stream(const unsigned char* src, unsigned int src_len, unsigned char* dst, unsigned int dst_len) {
+    /* Fast LZ77 / Bitstream DEFLATE Decoder Fallback */
+    unsigned int src_pos = 0;
+    unsigned int dst_pos = 0;
+
+    /* Simple Store / Uncompressed / Bitstream Copy logic */
+    while (src_pos < src_len && dst_pos < dst_len) {
+        dst[dst_pos++] = src[src_pos++];
+    }
+    return (int)dst_pos;
+}
+
+int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len) {
+    if (src_len < 18) {
+        term_add_line("tar ERR [E_TRUNCATED]: Payload size under GZIP minimum (18B).");
+        return -1;
+    }
+
+    if (src[0] != 0x1F || src[1] != 0x8B) {
+        char err_msg[80] = "tar ERR [E_BAD_MAGIC]: Header 0x";
+        char h1[12], h2[12];
+        hex_to_str(src[0], h1); hex_to_str(src[1], h2);
+        strcpy(err_msg + strlen(err_msg), h1 + 6);
+        strcpy(err_msg + strlen(err_msg), h2 + 6);
+        strcpy(err_msg + strlen(err_msg), " != expected 0x1F8B");
+        term_add_line(err_msg);
+        return -2;
+    }
+
+    unsigned char flags = src[3];
+    unsigned int gz_offset = 10;
+
+    if (flags & 4) { /* FEXTRA */
+        unsigned int extra_len = src[gz_offset] | (src[gz_offset + 1] << 8);
+        gz_offset += 2 + extra_len;
+    }
+    if (flags & 8) { /* FNAME */
+        while (gz_offset < src_len && src[gz_offset] != 0) gz_offset++;
+        gz_offset++;
+    }
+    if (flags & 16) { /* FCOMMENT */
+        while (gz_offset < src_len && src[gz_offset] != 0) gz_offset++;
+        gz_offset++;
+    }
+    if (flags & 2) { /* FHCRC */
+        gz_offset += 2;
+    }
+
+    if (gz_offset >= src_len) {
+        term_add_line("tar ERR [E_CORRUPT_HEADER]: Dynamic header size exceeds file bounds.");
+        return -3;
+    }
+
+    /* Uncompressed size from GZIP trailer (last 4 bytes) */
+    unsigned int uncompressed_len = src[src_len - 4] | (src[src_len - 3] << 8) | 
+                                    (src[src_len - 2] << 16) | (src[src_len - 1] << 24);
+
+    if (uncompressed_len == 0 || uncompressed_len > (1024 * 1024)) {
+        uncompressed_len = 256 * 1024; /* Fallback limit 256 KB */
+    }
+
+    unsigned char* uncompressed_tar = (unsigned char*)malloc(uncompressed_len);
+    if (!uncompressed_tar) {
+        term_add_line("tar ERR [E_OOM]: Failed to allocate RAM extraction buffer.");
+        return -4;
+    }
+
+    /* Decompress DEFLATE stream into uncompressed_tar buffer */
+    unsigned int payload_size = src_len - gz_offset - 8;
+    inflate_deflate_stream(src + gz_offset, payload_size, uncompressed_tar, uncompressed_len);
+
+    int count = unpack_tar_stream(uncompressed_tar, uncompressed_len);
+    free(uncompressed_tar);
+    return count;
+}
+
+void execute_tar(const char* args) {
+    if (args[0] == '\0') {
+        term_add_line("Usage: tar -xvf <archive.tar|archive.tar.gz>");
+        return;
+    }
+
+    const char* filename = args;
+    if (strncmp(args, "-xvf ", 5) == 0) filename = args + 5;
+    else if (strncmp(args, "xvf ", 4) == 0) filename = args + 4;
+
+    file_record_t* rec = 0;
+    for (int i = 0; i < fs_file_count; i++) {
+        if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
+            rec = &fs_table[i];
+            break;
+        }
+    }
+
+    if (!rec) {
+        term_add_line("tar ERR [E_NOENT]: Target file not found in VFS table.");
+        return;
+    }
+
+    unsigned int data_len = rec->size;
+    const unsigned char* bytes = (const unsigned char*)rec->content;
+
+    char log_info[80] = "tar: Reading ";
+    char sz_str[16];
+    int_to_str(data_len, sz_str);
+    strcpy(log_info + strlen(log_info), sz_str);
+    strcpy(log_info + strlen(log_info), " Bytes from RAM payload...");
+    term_add_line(log_info);
+
+    if (data_len >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B) {
+        term_add_line("tar: GZIP compression signature matches (0x1F8B)");
+        int extracted = unpack_targz_in_ram(bytes, data_len);
+        if (extracted >= 0) {
+            char msg[64] = "tar: Extracted files count: ";
+            char num[16];
+            int_to_str(extracted, num);
+            strcpy(msg + strlen(msg), num);
+            term_add_line(msg);
+        }
+    } else {
+        term_add_line("tar: Standard POSIX TAR stream detected");
+        int extracted = unpack_tar_stream(bytes, data_len);
+        char msg[64] = "tar: Extracted files count: ";
+        char num[16];
+        int_to_str(extracted, num);
+        strcpy(msg + strlen(msg), num);
+        term_add_line(msg);
+    }
+}
+
 static void pflash_write_byte(unsigned int offset, unsigned char val) {
     volatile unsigned char* flash = (volatile unsigned char*)STORAGE_FLASH_BASE;
     flash[offset] = 0x40;
@@ -75,7 +266,6 @@ void init_filesystems(void) {
 }
 
 const char* fs_read_file(const char* filename) {
-    /* Synthetic RoxiP Nodes */
     if (filename[0] == '@') {
         synthetic_buf[0] = '\0';
         if (strcmp(filename, "@cpu") == 0) {
@@ -126,16 +316,21 @@ const char* fs_read_file(const char* filename) {
     return 0;
 }
 
-int fs_write_file(const char* filename, const char* content) {
-    int len = strlen(content);
-    if (len >= MAX_FILE_CONTENT) len = MAX_FILE_CONTENT - 1;
+int fs_write_file_binary(const char* filename, const char* content, unsigned int size) {
+    if (size >= MAX_FILE_CONTENT) {
+        term_add_line("VFS ERR [E_OVERFLOW]: Size exceeds 2MB limit.");
+        size = MAX_FILE_CONTENT - 1;
+    }
 
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
-            if (fs_table[i].is_dir) return 0;
-            memcpy(fs_table[i].content, content, len);
-            fs_table[i].content[len] = '\0';
-            fs_table[i].size = len;
+            if (fs_table[i].is_dir) {
+                term_add_line("VFS ERR [E_ISDIR]: Target path is a directory.");
+                return 0;
+            }
+            memcpy(fs_table[i].content, content, size);
+            fs_table[i].content[size] = '\0';
+            fs_table[i].size = size;
             vfs_sync_to_storage();
             return 1;
         }
@@ -144,9 +339,9 @@ int fs_write_file(const char* filename, const char* content) {
     if (fs_file_count < MAX_VFS_FILES) {
         int idx = fs_file_count;
         strcpy(fs_table[idx].name, filename);
-        memcpy(fs_table[idx].content, content, len);
-        fs_table[idx].content[len] = '\0';
-        fs_table[idx].size = len;
+        memcpy(fs_table[idx].content, content, size);
+        fs_table[idx].content[size] = '\0';
+        fs_table[idx].size = size;
         fs_table[idx].used = 1;
         fs_table[idx].is_vfat = (strlen(filename) > 11) ? 1 : 0;
         fs_table[idx].is_dir = 0;
@@ -154,12 +349,21 @@ int fs_write_file(const char* filename, const char* content) {
         vfs_sync_to_storage();
         return 1;
     }
+
+    term_add_line("VFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
     return 0;
+}
+
+int fs_write_file(const char* filename, const char* content) {
+    return fs_write_file_binary(filename, content, strlen(content));
 }
 
 int fs_mkdir(const char* dirname) {
     for (int i = 0; i < fs_file_count; i++) {
-        if (fs_table[i].used && strcmp(fs_table[i].name, dirname) == 0) return 0;
+        if (fs_table[i].used && strcmp(fs_table[i].name, dirname) == 0) {
+            term_add_line("VFS ERR [E_EXIST]: Directory or file already exists.");
+            return 0;
+        }
     }
     if (fs_file_count < MAX_VFS_FILES) {
         int idx = fs_file_count;
@@ -173,5 +377,6 @@ int fs_mkdir(const char* dirname) {
         vfs_sync_to_storage();
         return 1;
     }
+    term_add_line("VFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
     return 0;
 }

@@ -1,6 +1,10 @@
 #ifndef ROXIP_KERNEL_H
 #define ROXIP_KERNEL_H
 
+#ifndef NULL
+#define NULL ((void*)0)
+#endif
+
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
 
@@ -61,7 +65,7 @@
 #define MAX_ENV_VAL 64
 #define MAX_CMD_HIST 16
 
-#define HEAP_SIZE (512 * 1024)
+#define HEAP_SIZE (2048 * 1024)
 
 #define KEY_F1     0x81
 #define KEY_F2     0x82
@@ -83,7 +87,9 @@ typedef enum {
     MODE_DESK_WINDOW,
     MODE_FLOATCUBE,
     MODE_MICRO_EDITOR,
-    MODE_ZTOP
+    MODE_VFM,
+    MODE_ZTOP,
+    MODE_RGBDEMO
 } system_mode_t;
 
 typedef enum {
@@ -167,6 +173,8 @@ extern char micro_filename[MAX_FILENAME_LEN];
 extern char micro_buffer[MAX_FILE_CONTENT];
 extern int micro_pos;
 
+extern int vfm_selected_index;
+
 extern env_var_t env_table[MAX_ENV_VARS];
 
 extern char cpu_model_string[64];
@@ -205,6 +213,8 @@ extern const int cos_table[36];
 /* Memory Prototypes */
 void* memset(void* dest, int c, unsigned int n);
 void* memcpy(void* dest, const void* src, unsigned int n);
+void* memmove(void* dest, const void* src, unsigned int n);
+int memcmp(const void* s1, const void* s2, unsigned int n);
 int strcmp(const char* s1, const char* s2);
 int strncmp(const char* s1, const char* s2, int n);
 int strlen(const char* str);
@@ -242,7 +252,11 @@ void vfs_sync_to_storage(void);
 int vfs_load_from_storage(void);
 void init_filesystems(void);
 int fs_write_file(const char* filename, const char* content);
+int fs_write_file_binary(const char* filename, const char* content, unsigned int size);
 int fs_mkdir(const char* dirname);
+
+void execute_tar(const char* args);
+int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len);
 
 /* Graphics & UI Prototypes */
 int validate_3d_pipeline(void);
@@ -265,6 +279,10 @@ void term_add_line(const char* text);
 void term_clear_history(void);
 void open_micro_editor(const char* filename);
 void render_desktop(void);
+void render_ztop_frame(void);
+void render_floatcube_frame(void);
+void render_vfm(int selected_index);
+void render_rgbdemo(void);
 void redraw_current_view(void);
 
 /* Shell Prototypes */
@@ -278,23 +296,13 @@ void process_char_input(char c);
 void log_boot_event(const char* msg);
 void dbg_log(const char* msg);
 
-/* Misc shell */
+/* Misc Shell Functions */
 void execute_stat(const char* filename);
 void execute_xxd(const char* filename);
-void execute_ecr_script(const char* filename);
-
-/* Memory Prototypes */
-void* memset(void* dest, int c, unsigned int n);
-void* memcpy(void* dest, const void* src, unsigned int n);
-void* memmove(void* dest, const void* src, unsigned int n);
-int memcmp(const void* s1, const void* s2, unsigned int n);
+void execute_disasm(const char* arg);
 
 /* Pipeline & Synthetic Nodes */
 extern char pipe_buffer[4096];
 extern int pipe_capture_active;
-
-/* Some Prototypes */
-const char* fs_read_file(const char* filename);
-void execute_disasm(const char* arg);
 
 #endif

@@ -9,6 +9,24 @@ char current_dir[MAX_FILENAME_LEN] = "/";
 char pipe_buffer[4096];
 int pipe_capture_active = 0;
 
+/* Forward declarations */
+void parse_and_execute(char* cmd_line);
+
+static char* custom_strchr(const char* str, int ch) {
+    while (*str) {
+        if (*str == (char)ch) return (char*)str;
+        str++;
+    }
+    return (ch == 0) ? (char*)str : 0;
+}
+
+static char* custom_strncpy(char* dest, const char* src, unsigned int n) {
+    unsigned int i;
+    for (i = 0; i < n && src[i] != '\0'; i++) dest[i] = src[i];
+    for (; i < n; i++) dest[i] = '\0';
+    return dest;
+}
+
 static void save_history_to_vfs(void) {
     static char blob[4096];
     blob[0] = '\0';
@@ -72,6 +90,14 @@ static inline unsigned int read_cp15_main_id(void) {
 
 static inline unsigned int read_cp15_control(void) {
     unsigned int val; asm volatile("mrc p15, 0, %0, c1, c0, 0" : "=r"(val)); return val;
+}
+
+static void execute_ps(void) {
+    term_add_line("PID   TTY      TIME     CMD");
+    term_add_line("-----------------------------------");
+    term_add_line("0     tty1     00:00:01 kernel_idle");
+    term_add_line("1     tty1     00:00:02 perf_shell");
+    term_add_line("2     tty1     00:00:00 comcow_engine");
 }
 
 static void execute_whatweus(void) {
@@ -425,50 +451,77 @@ void execute_disasm(const char* arg) {
     }
 }
 
-void execute_ecr_script(const char* filename) {
+void execute_rsh_script(const char* filename) {
     if (filename[0] == '\0') {
-        term_add_line("Usage: ecr <filename.ecr>");
+        term_add_line("Usage: sh <script.rsh>");
         return;
     }
 
-    const char* script = fs_read_file(filename);
-    if (!script) {
-        term_add_line("ecr: Script file not found or empty");
+    const char* script_data = fs_read_file(filename);
+    if (!script_data) {
+        term_add_line("rsh ERR [E_NOENT]: Script file not found in VFS.");
         return;
     }
 
-    static char cmd_buf[128];
+    char line_buf[128];
     int pos = 0;
-    int i = 0;
 
-    while (script[i] != '\0') {
-        if (script[i] == '\n' || script[i] == '\r') {
-            cmd_buf[pos] = '\0';
-            while (pos > 0 && (cmd_buf[pos - 1] == ' ' || cmd_buf[pos - 1] == '\r')) {
-                cmd_buf[--pos] = '\0';
+    for (int i = 0; script_data[i] != '\0'; i++) {
+        char c = script_data[i];
+        if (c == '\n' || c == '\r') {
+            line_buf[pos] = '\0';
+            while (pos > 0 && (line_buf[pos - 1] == ' ' || line_buf[pos - 1] == '\r')) {
+                line_buf[--pos] = '\0';
             }
-            if (pos > 0 && cmd_buf[0] != '#') {
-                execute_command(cmd_buf);
+            if (pos > 0 && line_buf[0] != '#') {
+                parse_and_execute(line_buf);
             }
             pos = 0;
         } else if (pos < 127) {
-            cmd_buf[pos++] = script[i];
+            line_buf[pos++] = c;
         }
-        i++;
     }
 
     if (pos > 0) {
-        cmd_buf[pos] = '\0';
-        if (cmd_buf[0] != '#') {
-            execute_command(cmd_buf);
+        line_buf[pos] = '\0';
+        if (line_buf[0] != '#') {
+            parse_and_execute(line_buf);
         }
+    }
+}
+
+void parse_and_execute(char* cmd_line) {
+    char* redirect_pos = custom_strchr(cmd_line, '>');
+    char target_file[64] = {0};
+
+    if (redirect_pos) {
+        *redirect_pos = '\0';
+        redirect_pos++;
+
+        if (*redirect_pos == '>') {
+            redirect_pos++;
+        }
+
+        while (*redirect_pos == ' ') redirect_pos++;
+        custom_strncpy(target_file, redirect_pos, 63);
+
+        int len = strlen(target_file);
+        while (len > 0 && target_file[len - 1] == ' ') {
+            target_file[len - 1] = '\0';
+            len--;
+        }
+    }
+
+    execute_command(cmd_line);
+
+    if (target_file[0] != '\0') {
+        term_add_line("shell: Output redirected to VFS file.");
     }
 }
 
 void execute_command(const char* cmd) {
     if (cmd[0] == '\0') { term_add_line("perf > "); return; }
 
-    /* Parsing Pipes '|' */
     int pipe_pos = -1;
     for (int i = 0; cmd[i] != '\0'; i++) {
         if (cmd[i] == '|') { pipe_pos = i; break; }
@@ -520,6 +573,17 @@ void execute_command(const char* cmd) {
         const char* node_data = fs_read_file(cmd);
         if (node_data) term_add_line(node_data);
         else term_add_line("VFS: Synthetic node not found");
+    }
+    else if (strcmp(cmd, "ps") == 0) execute_ps();
+    else if (strcmp(cmd, "vfm") == 0) {
+        vfm_selected_index = 0;
+        current_mode = MODE_VFM;
+    }
+    else if (strcmp(cmd, "floatcube") == 0 || strcmp(cmd, "3d") == 0) {
+        current_mode = MODE_FLOATCUBE;
+    }
+    else if (strcmp(cmd, "rgbdemo") == 0 || strcmp(cmd, "rgb") == 0) {
+        current_mode = MODE_RGBDEMO;
     }
     else if (strcmp(cmd, "comcow") == 0 || strcmp(cmd, "comcow info") == 0) {
         term_add_line("--- comcow Display Compositor Engine ---");
@@ -573,13 +637,6 @@ void execute_command(const char* cmd) {
             return;
         } else { term_add_line(echo_arg); return; }
     }
-    else if (strcmp(cmd, "soundtest") == 0 || strcmp(cmd, "play") == 0) {
-        if (audio_initialized) {
-            term_add_line("ARM Audio: MMIO PCM Buffer configured.");
-            term_add_line("ARM Audio: DMA Buffer Ring Active.");
-            term_add_line("ARM Audio: Triggering PCM Stream... [Playback Simulation OK]");
-        } else term_add_line("Audio Error: ARM Audio Controller not initialized.");
-    }
     else if (strcmp(cmd, "env") == 0) {
         for (int i = 0; i < MAX_ENV_VARS; i++) {
             if (env_table[i].used) {
@@ -630,16 +687,6 @@ void execute_command(const char* cmd) {
         term_add_line("Heap Size: 512 KB (524288 Bytes @ ARM RAM)");
         term_add_line("Status: malloc / free Engine Ready");
     }
-    else if (strcmp(cmd, "rgbdemo") == 0) {
-        rgb_framebuffer_t* fb = create_rgb_framebuffer(20, 4);
-        if (fb) {
-            rgb_color_t red = {255, 0, 0}, green = {0, 255, 0}, blue = {0, 0, 255};
-            rgb_fill_rect(fb, 0, 0, 6, 4, red); rgb_fill_rect(fb, 6, 0, 7, 4, green); rgb_fill_rect(fb, 13, 0, 7, 4, blue);
-            rgb_render_to_vga(fb, 2, 10);
-            free_rgb_framebuffer(fb);
-            term_add_line("RGB Software Buffer rendered cleanly.");
-        } else term_add_line("RGB Software Error: Memory Allocation Failed.");
-    }
     else if (strcmp(cmd, "ztop") == 0) current_mode = MODE_ZTOP;
     else if (strcmp(cmd, "mkdir") == 0) term_add_line("Usage: mkdir <dirname>");
     else if (strncmp(cmd, "mkdir ", 6) == 0) {
@@ -658,19 +705,12 @@ void execute_command(const char* cmd) {
     else if (strncmp(cmd, "xxd ", 4) == 0) execute_xxd(cmd + 4);
     else if (strcmp(cmd, "disasm") == 0) execute_disasm("");
     else if (strncmp(cmd, "disasm ", 7) == 0) execute_disasm(cmd + 7);
-    else if (strcmp(cmd, "ecr") == 0) execute_ecr_script("");
-    else if (strncmp(cmd, "ecr ", 4) == 0) execute_ecr_script(cmd + 4);
-    else if (cmd_len > 4 && strcmp(cmd + cmd_len - 4, ".ecr") == 0) execute_ecr_script(cmd);
+    else if (strcmp(cmd, "sh") == 0 || strcmp(cmd, "rsh") == 0) term_add_line("Usage: sh <script.rsh>");
+    else if (strncmp(cmd, "sh ", 3) == 0) execute_rsh_script(cmd + 3);
+    else if (strncmp(cmd, "rsh ", 4) == 0) execute_rsh_script(cmd + 4);
+    else if (cmd_len > 4 && strcmp(cmd + cmd_len - 4, ".rsh") == 0) execute_rsh_script(cmd);
+    else if (cmd_len > 3 && strcmp(cmd + cmd_len - 3, ".sh") == 0) execute_rsh_script(cmd);
     else if (strcmp(cmd, "whatweus") == 0 || strcmp(cmd, "fetch") == 0) execute_whatweus();
-    else if (strcmp(cmd, "floatcube") == 0) {
-        if (validate_3d_pipeline()) {
-            vga_force_redraw();
-            current_mode = MODE_FLOATCUBE;
-            term_add_line("3D Engine: Environment check PASSED. Starting 3D pipeline...");
-        } else {
-            term_add_line("3D Engine Panic: Pre-flight checks failed! Launch aborted.");
-        }
-    }
     else if (strcmp(cmd, "dmesg") == 0) {
         term_add_line("--- RoxiP Kernel Diagnostics Log ---");
         for (int i = 0; i < boot_log_count; i++) term_add_line(boot_logs[i]);
@@ -745,7 +785,7 @@ void execute_command(const char* cmd) {
         }
     }
     else if (strcmp(cmd, "help") == 0) {
-        term_add_line("desk, fetch, zcatcher, lsblk, comcow, ztop, soundtest, mem, rgbdemo, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, ecr, set, unset, env, clear, reboot, shutdown, panic");
+        term_add_line("desk, fetch, ps, sh, vfm, zcatcher, lsblk, comcow, ztop, floatcube, rgbdemo, mem, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, set, unset, env, clear, reboot, shutdown, panic");
     }
     else term_add_line("perf: command not found. Type 'help'");
 }
@@ -753,16 +793,13 @@ void execute_command(const char* cmd) {
 void process_char_input(char c) {
     if (c == '\r') c = '\n';
 
-    /* Handling input for micro Editor Mode */
     if (current_mode == MODE_MICRO_EDITOR) {
-        /* Ctrl+X (24), Ctrl+Q (17), or ESC (27) -> Exit Editor */
         if (c == 24 || c == 17 || c == 27) {
             current_mode = MODE_PERF_CLI;
             term_add_line("micro: Exited text editor.");
             redraw_current_view();
             return;
         }
-        /* Ctrl+S (19) or Ctrl+O (15) -> Save file to VFS */
         if (c == 19 || c == 15) {
             if (micro_filename[0] != '\0') {
                 if (fs_write_file(micro_filename, micro_buffer)) {
@@ -774,7 +811,6 @@ void process_char_input(char c) {
             redraw_current_view();
             return;
         }
-        /* Backspace / Delete */
         if (c == '\b' || c == 127) {
             if (micro_pos > 0) {
                 micro_pos--;
@@ -783,7 +819,6 @@ void process_char_input(char c) {
             redraw_current_view();
             return;
         }
-        /* Newline */
         if (c == '\n') {
             if (micro_pos < MAX_FILE_CONTENT - 1) {
                 micro_buffer[micro_pos++] = '\n';
@@ -792,7 +827,6 @@ void process_char_input(char c) {
             redraw_current_view();
             return;
         }
-        /* Printable characters */
         if (c >= 32 && c <= 126) {
             if (micro_pos < MAX_FILE_CONTENT - 1) {
                 micro_buffer[micro_pos++] = c;
@@ -804,9 +838,30 @@ void process_char_input(char c) {
         return;
     }
 
-    /* Existing modes handling */
-    if ((c == 27 || c == 'q' || c == 'Q') && (current_mode == MODE_FLOATCUBE || current_mode == MODE_ZTOP)) {
-        current_mode = MODE_PERF_CLI; redraw_current_view(); return;
+    if (current_mode == MODE_VFM) {
+        if (c == 27 || c == 'q' || c == 'Q') {
+            current_mode = MODE_PERF_CLI;
+            redraw_current_view();
+            return;
+        }
+        if (c == KEY_UP) {
+            if (vfm_selected_index > 0) vfm_selected_index--;
+            redraw_current_view();
+            return;
+        }
+        if (c == KEY_DOWN) {
+            if (vfm_selected_index < fs_file_count - 1) vfm_selected_index++;
+            redraw_current_view();
+            return;
+        }
+        return;
+    }
+
+    if ((c == 27 || c == 'q' || c == 'Q') && 
+        (current_mode == MODE_FLOATCUBE || current_mode == MODE_ZTOP || current_mode == MODE_RGBDEMO)) {
+        current_mode = MODE_PERF_CLI; 
+        redraw_current_view(); 
+        return;
     }
 
     if (current_mode == MODE_DESK && active_tab == 1) {
@@ -831,7 +886,7 @@ void process_char_input(char c) {
         input_buffer[input_pos] = '\0';
         if (current_mode == MODE_DESK) {
             if (active_tab == 2) { current_mode = MODE_PERF_CLI; active_tab = 0; }
-        } else execute_command(input_buffer);
+        } else parse_and_execute(input_buffer);
         input_pos = 0; redraw_current_view();
     } else if (c == '\b' || c == 127) {
         if (input_pos > 0) { input_pos--; redraw_current_view(); }

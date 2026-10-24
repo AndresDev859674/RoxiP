@@ -9,3 +9,10 @@ roxip.storage
 *.bin 
 
 roxip-cli
+
+*.img
+
+*.tar.gz
+
+*.tar
+

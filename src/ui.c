@@ -4,6 +4,7 @@ char term_lines[TERM_ROWS][TERM_COLS];
 int term_row_count = 0;
 int active_tab = 0;
 int hub_hidden = 0;
+int vfm_selected_index = 0;
 
 static inline unsigned char make_color(unsigned char fg, unsigned char bg) {
     return fg | (bg << 4);
@@ -301,13 +302,11 @@ void render_ztop_frame(void) {
 void render_micro_editor(void) {
     vga_clear(make_color(COLOR_BLACK, COLOR_BLUE));
 
-    /* Top header bar */
     unsigned char top_color = make_color(COLOR_BLACK, COLOR_LIGHT_GREY);
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', top_color, x, 0);
     vga_draw_string(" micro - ", top_color, 1, 0);
     vga_draw_string(micro_filename[0] ? micro_filename : "Untitled", top_color, 10, 0);
 
-    /* Bottom status bar */
     unsigned char bot_color = make_color(COLOR_BLACK, COLOR_CYAN);
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bot_color, x, 24);
     vga_draw_string(" Ctrl+O / Ctrl+S: Save  |  ESC / Ctrl+Q / Ctrl+X: Exit ", bot_color, 1, 24);
@@ -319,7 +318,6 @@ void render_micro_editor(void) {
     int in_comment = 0;
     int in_string = 0;
 
-    /* Render initial line number (Line 1) */
     char num_str[16];
     char formatted[16];
     int_to_str(line_num, num_str);
@@ -372,7 +370,7 @@ void render_micro_editor(void) {
                      strncmp(&micro_buffer[i], "stat", 4) == 0 ||
                      strncmp(&micro_buffer[i], "xxd", 3) == 0 ||
                      strncmp(&micro_buffer[i], "disasm", 6) == 0 ||
-                     strncmp(&micro_buffer[i], "ecr", 3) == 0)) {
+                     strncmp(&micro_buffer[i], "sh", 2) == 0)) {
                     text_color = make_color(COLOR_YELLOW, COLOR_BLUE);
                 }
             }
@@ -435,6 +433,82 @@ int validate_3d_pipeline(void) {
     return 1;
 }
 
+/* Custom helper to format string and number without standard snprintf */
+static void mini_snprintf_vfm(char* buf, const char* name, int size) {
+    char sz_str[16];
+    int_to_str(size, sz_str);
+    int pos = 0;
+    buf[pos++] = ' ';
+    
+    int n_len = strlen(name);
+    for (int i = 0; i < 18; i++) {
+        if (i < n_len) buf[pos++] = name[i];
+        else buf[pos++] = ' ';
+    }
+    
+    buf[pos++] = ' ';
+    int s_len = strlen(sz_str);
+    for (int i = 0; i < 6 - s_len; i++) buf[pos++] = ' ';
+    for (int i = 0; i < s_len; i++) buf[pos++] = sz_str[i];
+    
+    buf[pos++] = 'B';
+    buf[pos++] = ' ';
+    buf[pos] = '\0';
+}
+
+void render_vfm(int selected_index) {
+    vga_clear(make_color(COLOR_WHITE, COLOR_BLACK));
+
+    vga_draw_string(" RoxiP File Manager v0.1 (vfm) - VFS Explorer ", make_color(COLOR_BLACK, COLOR_CYAN), 0, 0);
+
+    vga_draw_string("+--- VFS Storage (pflash) ---+", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 2, 2);
+    int active_files = 0;
+    for (int i = 0; i < fs_file_count; i++) {
+        if (fs_table[i].used) {
+            char line[40];
+            mini_snprintf_vfm(line, fs_table[i].name, fs_table[i].size);
+            if (active_files == selected_index) {
+                vga_draw_string(line, make_color(COLOR_BLACK, COLOR_LIGHT_GREEN), 3, 4 + active_files);
+            } else {
+                vga_draw_string(line, make_color(COLOR_WHITE, COLOR_BLACK), 3, 4 + active_files);
+            }
+            active_files++;
+        }
+    }
+
+    vga_draw_string("+--- Synthetic Nodes ---+", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 42, 2);
+    vga_draw_string(" @cpu   (CPU Architecture) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 4);
+    vga_draw_string(" @ram   (Heap Memory Usage)", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 5);
+    vga_draw_string(" @gpu   (comcow Compositor)", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 6);
+    vga_draw_string(" @fb0   (Framebuffer Base) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 7);
+    vga_draw_string(" @vfs   (Storage Metadata) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 8);
+
+    vga_draw_string(" [UP/DOWN] Select  [ENTER] View (cat)  [ESC/Q] Exit back to perf ", make_color(COLOR_BLACK, COLOR_LIGHT_GREY), 0, 24);
+    vga_flush();
+}
+
+void render_rgbdemo(void) {
+    vga_clear(make_color(COLOR_BLACK, COLOR_BLACK));
+    vga_draw_string("=== RoxiP Framebuffer RGB Color Test ===", make_color(COLOR_WHITE, COLOR_BLACK), 20, 2);
+
+    unsigned char colors[8] = {
+        COLOR_RED, COLOR_GREEN, COLOR_BLUE, COLOR_CYAN,
+        COLOR_MAGENTA, COLOR_YELLOW, COLOR_WHITE, COLOR_LIGHT_GREY
+    };
+
+    for (int i = 0; i < 8; i++) {
+        int start_x = 5 + (i * 9);
+        for (int y = 6; y < 18; y++) {
+            for (int x = start_x; x < start_x + 8; x++) {
+                vga_draw_char_at('#', make_color(colors[i], COLOR_BLACK), x, y);
+            }
+        }
+    }
+
+    vga_draw_string("Press [ESC] or [Q] to return to perf Terminal", make_color(COLOR_DARK_GREY, COLOR_BLACK), 18, 22);
+    vga_flush();
+}
+
 void render_floatcube_frame(void) {
     static int angle_x = 0, angle_y = 0, angle_z = 0;
     static unsigned int frame_counter = 0;
@@ -495,10 +569,15 @@ void render_floatcube_frame(void) {
 }
 
 void redraw_current_view(void) {
-    if (current_mode == MODE_PERF_CLI) render_cli();
-    else if (current_mode == MODE_DESK) render_desktop();
-    else if (current_mode == MODE_DESK_WINDOW) render_perf_window();
-    else if (current_mode == MODE_FLOATCUBE) render_floatcube_frame();
-    else if (current_mode == MODE_MICRO_EDITOR) render_micro_editor();
-    else if (current_mode == MODE_ZTOP) render_ztop_frame();
+    switch (current_mode) {
+        case MODE_PERF_CLI:      render_cli(); break;
+        case MODE_DESK:          render_desktop(); break;
+        case MODE_DESK_WINDOW:   render_perf_window(); break;
+        case MODE_FLOATCUBE:     render_floatcube_frame(); break;
+        case MODE_MICRO_EDITOR:  render_micro_editor(); break;
+        case MODE_ZTOP:          render_ztop_frame(); break;
+        case MODE_VFM:           render_vfm(vfm_selected_index); break;
+        case MODE_RGBDEMO:       render_rgbdemo(); break;
+        default:                 render_cli(); break;
+    }
 }

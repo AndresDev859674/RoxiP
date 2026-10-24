@@ -1,6 +1,6 @@
 /*
  * RoxiP OS Host CLI Utility (roxip-cli) - RoxiP Tools
-*/
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +62,37 @@ static int load_header(const char* path, storage_header_t* header, FILE** out_fp
     return 1;
 }
 
+static void populate_default_files(storage_header_t* header) {
+    header->file_count = 0;
+
+    /* File 1: motd.txt */
+    snprintf(header->files[0].name, MAX_FILENAME_LEN, "motd.txt");
+    snprintf(header->files[0].content, MAX_FILE_CONTENT, "Welcome to RoxiP OS! comcow Compositor Engine Active.");
+    header->files[0].size = strlen(header->files[0].content);
+    header->files[0].used = 1;
+    header->files[0].is_vfat = 0;
+    header->files[0].is_dir = 0;
+    header->file_count++;
+
+    /* File 2: LongFileName_VFAT.sys */
+    snprintf(header->files[1].name, MAX_FILENAME_LEN, "LongFileName_VFAT.sys");
+    snprintf(header->files[1].content, MAX_FILE_CONTENT, "vfat_enabled=true\nfat32_clusters=65536\nlfn_support=1");
+    header->files[1].size = strlen(header->files[1].content);
+    header->files[1].used = 1;
+    header->files[1].is_vfat = 1;
+    header->files[1].is_dir = 0;
+    header->file_count++;
+
+    /* File 3: history.txt */
+    snprintf(header->files[2].name, MAX_FILENAME_LEN, "history.txt");
+    header->files[2].content[0] = '\0';
+    header->files[2].size = 0;
+    header->files[2].used = 1;
+    header->files[2].is_vfat = 0;
+    header->files[2].is_dir = 0;
+    header->file_count++;
+}
+
 static int cmd_create(const char* path, int size_mb) {
     if (size_mb <= 0) {
         fprintf(stderr, "Error: Size must be greater than 0 MB.\n");
@@ -82,7 +113,7 @@ static int cmd_create(const char* path, int size_mb) {
     }
 
     header->magic = STORAGE_MAGIC;
-    header->file_count = 0;
+    populate_default_files(header);
 
     fwrite(header, sizeof(storage_header_t), 1, fp);
 
@@ -100,7 +131,7 @@ static int cmd_create(const char* path, int size_mb) {
 
     free(header);
     fclose(fp);
-    printf("Successfully created formatted image '%s' (%d MB)\n", path, size_mb);
+    printf("Successfully created formatted image '%s' (%d MB) with default VFS layout\n", path, size_mb);
     return 0;
 }
 
@@ -160,7 +191,6 @@ static int cmd_read(const char* path, const char* filename, const char* host_out
                 printf("Successfully extracted binary '%s' to host file '%s' (%d bytes)\n",
                        filename, host_out_path, header->files[i].size);
             } else {
-                /* Dump raw bytes out to stdout safely */
                 fwrite(header->files[i].content, 1, header->files[i].size, stdout);
                 printf("\n");
             }
@@ -189,7 +219,6 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
             return 1;
         }
 
-        /* Lectura de bytes crudos (Binarios/PNG/Executables) */
         payload_size = fread(file_payload, 1, MAX_FILE_CONTENT, host_file);
 
         fseek(host_file, 0, SEEK_END);

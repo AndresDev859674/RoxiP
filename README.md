@@ -27,9 +27,7 @@ The system is built on a VFS (Virtual File System)—a lightweight, custom-desig
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><img src="https://codeberg.org/avatars/6497ffe1597f5fb6406f06a4bb716218ddfbb5c99dd1fee3d48b2a947ea8be59" width="100px;" alt="PascalX"/><br /><sub><b>pascalX</b></sub></a><br /><a href="https://codeberg.org/pascalX" title="Code">😒</a></td>
-    </tr>
-    <tr>
       <td align="center" valign="top" width="14.28%"><img src="https://avatars.githubusercontent.com/u/167466992?v=4" width="100px;" alt="AndresDev859674"/><br /><sub><b>Andrew (AndresDev859674)</b></sub></a><br /><a href="https://github.com/AndresDev859674" title="Code">💻</a></td>
-     </tr>
+    </tr>
   </tbody>
 </table>
