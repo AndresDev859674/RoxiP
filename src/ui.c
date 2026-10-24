@@ -28,6 +28,16 @@ static void term_add_line_single(const char* text) {
 }
 
 void term_add_line(const char* text) {
+    if (pipe_capture_active) {
+        int p_len = strlen(pipe_buffer);
+        int t_len = strlen(text);
+        if (p_len + t_len + 2 < 4096) {
+            if (p_len > 0) { pipe_buffer[p_len++] = '\n'; pipe_buffer[p_len] = '\0'; }
+            strcpy(pipe_buffer + p_len, text);
+        }
+        return;
+    }
+
     int len = strlen(text);
     int offset = 0;
     int max_chunk = TERM_COLS - 2;
@@ -299,14 +309,42 @@ void render_micro_editor(void) {
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bot_color, x, 24);
     vga_draw_string(" Ctrl+S: Save  |  Ctrl+X: Exit ", bot_color, 1, 24);
 
-    unsigned char text_color = make_color(COLOR_WHITE, COLOR_BLUE);
     int cur_x = 2, cur_y = 2;
+    int in_comment = 0;
+    int in_string = 0;
 
     for (int i = 0; i < micro_pos; i++) {
-        if (micro_buffer[i] == '\n') {
+        char ch = micro_buffer[i];
+        if (ch == '\n') {
             cur_y++; cur_x = 2;
+            in_comment = 0; in_string = 0;
         } else {
-            vga_draw_char_at(micro_buffer[i], text_color, cur_x, cur_y);
+            if (ch == '#') in_comment = 1;
+            if (ch == '"') in_string = !in_string;
+
+            unsigned char text_color = make_color(COLOR_WHITE, COLOR_BLUE);
+            if (in_comment) {
+                text_color = make_color(COLOR_LIGHT_GREEN, COLOR_BLUE);
+            } else if (in_string || ch == '"') {
+                text_color = make_color(COLOR_LIGHT_CYAN, COLOR_BLUE);
+            } else if (ch == '=' || ch == '>' || ch == '|' || ch == '@') {
+                text_color = make_color(COLOR_LIGHT_MAGENTA, COLOR_BLUE);
+            } else {
+                if ((i == 0 || micro_buffer[i - 1] == ' ' || micro_buffer[i - 1] == '\n') &&
+                    (strncmp(&micro_buffer[i], "set", 3) == 0 ||
+                     strncmp(&micro_buffer[i], "echo", 4) == 0 ||
+                     strncmp(&micro_buffer[i], "fetch", 5) == 0 ||
+                     strncmp(&micro_buffer[i], "clear", 5) == 0 ||
+                     strncmp(&micro_buffer[i], "desk", 4) == 0 ||
+                     strncmp(&micro_buffer[i], "stat", 4) == 0 ||
+                     strncmp(&micro_buffer[i], "xxd", 3) == 0 ||
+                     strncmp(&micro_buffer[i], "disasm", 6) == 0 ||
+                     strncmp(&micro_buffer[i], "ecr", 3) == 0)) {
+                    text_color = make_color(COLOR_YELLOW, COLOR_BLUE);
+                }
+            }
+
+            vga_draw_char_at(ch, text_color, cur_x, cur_y);
             cur_x++;
             if (cur_x >= VGA_WIDTH - 2) { cur_y++; cur_x = 2; }
         }
@@ -330,30 +368,14 @@ void open_micro_editor(const char* filename) {
 }
 
 static void draw_line_3d(int x0, int y0, int x1, int y1, char ch, unsigned char color) {
-    if (x0 < 0) {
-        x0 = 0;
-    }
-    if (x0 >= VGA_WIDTH) {
-        x0 = VGA_WIDTH - 1;
-    }
-    if (x1 < 0) {
-        x1 = 0;
-    }
-    if (x1 >= VGA_WIDTH) {
-        x1 = VGA_WIDTH - 1;
-    }
-    if (y0 < 0) {
-        y0 = 0;
-    }
-    if (y0 >= VGA_HEIGHT) {
-        y0 = VGA_HEIGHT - 1;
-    }
-    if (y1 < 0) {
-        y1 = 0;
-    }
-    if (y1 >= VGA_HEIGHT) {
-        y1 = VGA_HEIGHT - 1;
-    }
+    if (x0 < 0) x0 = 0;
+    if (x0 >= VGA_WIDTH) x0 = VGA_WIDTH - 1;
+    if (x1 < 0) x1 = 0;
+    if (x1 >= VGA_WIDTH) x1 = VGA_WIDTH - 1;
+    if (y0 < 0) y0 = 0;
+    if (y0 >= VGA_HEIGHT) y0 = VGA_HEIGHT - 1;
+    if (y1 < 0) y1 = 0;
+    if (y1 >= VGA_HEIGHT) y1 = VGA_HEIGHT - 1;
 
     int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
     int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
@@ -416,18 +438,10 @@ void render_floatcube_frame(void) {
         int px = 40 + (x3 * fov) / distance;
         int py = 13 + (y3 * (fov / 2)) / distance;
 
-        if (px < 0) {
-            px = 0;
-        }
-        if (px >= VGA_WIDTH) {
-            px = VGA_WIDTH - 1;
-        }
-        if (py < 0) {
-            py = 0;
-        }
-        if (py >= VGA_HEIGHT) {
-            py = VGA_HEIGHT - 1;
-        }
+        if (px < 0) px = 0;
+        if (px >= VGA_WIDTH) px = VGA_WIDTH - 1;
+        if (py < 0) py = 0;
+        if (py >= VGA_HEIGHT) py = VGA_HEIGHT - 1;
 
         proj_x[i] = px; proj_y[i] = py;
     }

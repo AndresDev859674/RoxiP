@@ -6,6 +6,9 @@ int hist_count = 0;
 env_var_t env_table[MAX_ENV_VARS];
 char current_dir[MAX_FILENAME_LEN] = "/";
 
+char pipe_buffer[4096];
+int pipe_capture_active = 0;
+
 static void save_history_to_vfs(void) {
     static char blob[4096];
     blob[0] = '\0';
@@ -187,80 +190,229 @@ static void execute_lsblk(void) {
 }
 
 void execute_stat(const char* filename) {
+    if (filename[0] == '@') {
+        const char* node_data = fs_read_file(filename);
+        if (node_data) {
+            char line[80], num_buf[16];
+            term_add_line("--- RoxiP Synthetic Node Stat ---");
+            strcpy(line, "Node Name  : "); strcpy(line + 13, filename); term_add_line(line);
+            int_to_str(strlen(node_data), num_buf);
+            strcpy(line, "Data Size  : "); strcpy(line + 13, num_buf); strcpy(line + 13 + strlen(num_buf), " Bytes"); term_add_line(line);
+            term_add_line("Attributes : Synthetic Callback Node");
+            return;
+        }
+    }
+
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
             char line[80], num_buf[16], hex_buf[12];
             term_add_line("--- VFS File Stat Info ---");
-
             strcpy(line, "File Name  : "); strcpy(line + 13, fs_table[i].name); term_add_line(line);
-
             int_to_str(fs_table[i].size, num_buf);
             strcpy(line, "File Size  : "); strcpy(line + 13, num_buf); strcpy(line + 13 + strlen(num_buf), " Bytes"); term_add_line(line);
-
             hex_to_str((unsigned int)fs_table[i].content, hex_buf);
             strcpy(line, "RAM Addr   : "); strcpy(line + 13, hex_buf); term_add_line(line);
-
             strcpy(line, "Record Type: "); strcpy(line + 13, fs_table[i].is_dir ? "Directory" : "Regular File"); term_add_line(line);
             strcpy(line, "Attributes : "); strcpy(line + 13, fs_table[i].is_vfat ? "VFAT / LFN" : "Standard VFS"); term_add_line(line);
             return;
         }
     }
-    term_add_line("stat: File or directory not found");
+    term_add_line("stat: File or node not found");
 }
 
 void execute_xxd(const char* filename) {
-    for (int i = 0; i < fs_file_count; i++) {
-        if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
-            if (fs_table[i].is_dir) {
-                term_add_line("xxd: Target is a directory");
-                return;
-            }
-            const unsigned char* bytes = (const unsigned char*)fs_table[i].content;
-            int size = fs_table[i].size;
-            if (size == 0) {
-                term_add_line("xxd: File is empty");
-                return;
-            }
-
-            int dump_limit = (size > 128) ? 128 : size;
-            for (int offset = 0; offset < dump_limit; offset += 8) {
-                char line[80];
-                char hex_off[12];
-                hex_to_str(offset, hex_off);
-
-                int pos = 0;
-                for (int k = 2; k < 6; k++) line[pos++] = hex_off[k];
-                line[pos++] = ':'; line[pos++] = ' ';
-
-                for (int b = 0; b < 8; b++) {
-                    if (offset + b < dump_limit) {
-                        const char hex_chars[] = "0123456789abcdef";
-                        unsigned char val = bytes[offset + b];
-                        line[pos++] = hex_chars[(val >> 4) & 0xF];
-                        line[pos++] = hex_chars[val & 0xF];
-                        line[pos++] = ' ';
-                    } else {
-                        line[pos++] = ' '; line[pos++] = ' '; line[pos++] = ' ';
-                    }
-                }
-                line[pos++] = ' ';
-
-                for (int b = 0; b < 8; b++) {
-                    if (offset + b < dump_limit) {
-                        unsigned char val = bytes[offset + b];
-                        line[pos++] = (val >= 32 && val <= 126) ? (char)val : '.';
-                    }
-                }
-                line[pos] = '\0';
-                term_add_line(line);
-            }
-            if (size > 128) {
-                term_add_line("[xxd: Truncated at 128 bytes]");
-            }
-            return;
-        }
+    const char* data = fs_read_file(filename);
+    if (!data) {
+        term_add_line("xxd: File or node not found");
+        return;
     }
-    term_add_line("xxd: File not found");
+
+    const unsigned char* bytes = (const unsigned char*)data;
+    int size = strlen(data);
+    if (size == 0) {
+        term_add_line("xxd: File is empty");
+        return;
+    }
+
+    int dump_limit = (size > 128) ? 128 : size;
+    for (int offset = 0; offset < dump_limit; offset += 8) {
+        char line[80]; char hex_off[12];
+        hex_to_str(offset, hex_off);
+        int pos = 0;
+        for (int k = 2; k < 6; k++) line[pos++] = hex_off[k];
+        line[pos++] = ':'; line[pos++] = ' ';
+
+        for (int b = 0; b < 8; b++) {
+            if (offset + b < dump_limit) {
+                const char hex_chars[] = "0123456789abcdef";
+                unsigned char val = bytes[offset + b];
+                line[pos++] = hex_chars[(val >> 4) & 0xF];
+                line[pos++] = hex_chars[val & 0xF];
+                line[pos++] = ' ';
+            } else {
+                line[pos++] = ' '; line[pos++] = ' '; line[pos++] = ' ';
+            }
+        }
+        line[pos++] = ' ';
+
+        for (int b = 0; b < 8; b++) {
+            if (offset + b < dump_limit) {
+                unsigned char val = bytes[offset + b];
+                line[pos++] = (val >= 32 && val <= 126) ? (char)val : '.';
+            }
+        }
+        line[pos] = '\0';
+        term_add_line(line);
+    }
+    if (size > 128) term_add_line("[xxd: Truncated at 128 bytes]");
+}
+
+static void decode_arm32_inst(unsigned int addr, unsigned int inst, char* out_line) {
+    const char* reg_names[] = {"R0","R1","R2","R3","R4","R5","R6","R7","R8","R9","R10","FP","IP","SP","LR","PC"};
+    const char* cond_names[] = {"EQ","NE","CS","CC","MI","PL","VS","VC","HI","LS","GE","LT","GT","LE","",""};
+
+    unsigned int cond = (inst >> 28) & 0xF;
+    const char* c_str = cond_names[cond];
+
+    char hex_addr[12], hex_inst[12];
+    hex_to_str(addr, hex_addr);
+    hex_to_str(inst, hex_inst);
+
+    int pos = 0;
+    for (int k = 2; k < 10; k++) out_line[pos++] = hex_addr[k];
+    out_line[pos++] = ':'; out_line[pos++] = ' ';
+    for (int k = 2; k < 10; k++) out_line[pos++] = hex_inst[k];
+    out_line[pos++] = ' '; out_line[pos++] = ' ';
+
+    if ((inst & 0x0FFFFFF0) == 0x012FFF10) {
+        int rm = inst & 0xF;
+        strcpy(out_line + pos, "BX"); pos += 2;
+        if (c_str[0]) { strcpy(out_line + pos, c_str); pos += strlen(c_str); }
+        while (pos < 28) out_line[pos++] = ' ';
+        strcpy(out_line + pos, reg_names[rm]);
+        return;
+    }
+
+    if (((inst >> 25) & 0x7) == 5) {
+        int link = (inst >> 24) & 1;
+        const char* b_op = link ? "BL" : "B";
+        strcpy(out_line + pos, b_op); pos += strlen(b_op);
+        if (c_str[0]) { strcpy(out_line + pos, c_str); pos += strlen(c_str); }
+        while (pos < 28) out_line[pos++] = ' ';
+
+        signed int imm24 = inst & 0xFFFFFF;
+        if (imm24 & 0x800000) imm24 |= 0xFF000000;
+        unsigned int target = addr + 8 + (imm24 << 2);
+        char hex_target[12];
+        hex_to_str(target, hex_target);
+        strcpy(out_line + pos, hex_target);
+        return;
+    }
+
+    if (((inst >> 26) & 0x3) == 0) {
+        const char* dp_ops[] = {"AND","EOR","SUB","RSB","ADD","ADC","SBC","RSC","TST","TEQ","CMP","CMN","ORR","MOV","BIC","MVN"};
+        int op = (inst >> 21) & 0xF;
+        int rn = (inst >> 16) & 0xF;
+        int rd = (inst >> 12) & 0xF;
+        int is_imm = (inst >> 25) & 1;
+
+        const char* op_name = dp_ops[op];
+        strcpy(out_line + pos, op_name); pos += strlen(op_name);
+        if (c_str[0]) { strcpy(out_line + pos, c_str); pos += strlen(c_str); }
+        while (pos < 28) out_line[pos++] = ' ';
+
+        if (op == 13 || op == 15) {
+            strcpy(out_line + pos, reg_names[rd]); pos += strlen(reg_names[rd]);
+            strcpy(out_line + pos, ", "); pos += 2;
+        } else if (op >= 8 && op <= 11) {
+            strcpy(out_line + pos, reg_names[rn]); pos += strlen(reg_names[rn]);
+            strcpy(out_line + pos, ", "); pos += 2;
+        } else {
+            strcpy(out_line + pos, reg_names[rd]); pos += strlen(reg_names[rd]);
+            strcpy(out_line + pos, ", "); pos += 2;
+            strcpy(out_line + pos, reg_names[rn]); pos += strlen(reg_names[rn]);
+            strcpy(out_line + pos, ", "); pos += 2;
+        }
+
+        if (is_imm) {
+            unsigned int val = inst & 0xFF;
+            char val_str[16];
+            int_to_str(val, val_str);
+            out_line[pos++] = '#';
+            strcpy(out_line + pos, val_str);
+        } else {
+            int rm = inst & 0xF;
+            strcpy(out_line + pos, reg_names[rm]);
+        }
+        return;
+    }
+
+    if (((inst >> 26) & 0x3) == 1) {
+        int is_ldr = (inst >> 20) & 1;
+        int rn = (inst >> 16) & 0xF;
+        int rd = (inst >> 12) & 0xF;
+        const char* l_op = is_ldr ? "LDR" : "STR";
+
+        strcpy(out_line + pos, l_op); pos += 3;
+        if (c_str[0]) { strcpy(out_line + pos, c_str); pos += strlen(c_str); }
+        while (pos < 28) out_line[pos++] = ' ';
+
+        strcpy(out_line + pos, reg_names[rd]); pos += strlen(reg_names[rd]);
+        strcpy(out_line + pos, ", ["); pos += 3;
+        strcpy(out_line + pos, reg_names[rn]); pos += strlen(reg_names[rn]);
+        int offset = inst & 0xFFF;
+        if (offset > 0) {
+            char off_str[16];
+            int_to_str(offset, off_str);
+            strcpy(out_line + pos, ", #"); pos += 3;
+            strcpy(out_line + pos, off_str); pos += strlen(off_str);
+        }
+        out_line[pos++] = ']';
+        out_line[pos] = '\0';
+        return;
+    }
+
+    strcpy(out_line + pos, "DATA / UNDEF");
+}
+
+void execute_disasm(const char* arg) {
+    if (arg[0] == '\0') {
+        term_add_line("Usage: disasm <filename|@node|0xADDR>");
+        return;
+    }
+
+    term_add_line("--- RoxiP ARM32 Mini Disassembler ---");
+
+    if (arg[0] == '0' && arg[1] == 'x') {
+        unsigned int addr = 0;
+        for (int i = 2; arg[i] != '\0'; i++) {
+            addr <<= 4;
+            if (arg[i] >= '0' && arg[i] <= '9') addr |= (arg[i] - '0');
+            else if (arg[i] >= 'a' && arg[i] <= 'f') addr |= (arg[i] - 'a' + 10);
+            else if (arg[i] >= 'A' && arg[i] <= 'F') addr |= (arg[i] - 'A' + 10);
+        }
+
+        const unsigned int* code_ptr = (const unsigned int*)addr;
+        for (int k = 0; k < 8; k++) {
+            char line[80];
+            decode_arm32_inst(addr + (k * 4), code_ptr[k], line);
+            term_add_line(line);
+        }
+        return;
+    }
+
+    const char* data = fs_read_file(arg);
+    if (!data) {
+        term_add_line("disasm: File or node not found");
+        return;
+    }
+
+    const unsigned int* code_ptr = (const unsigned int*)data;
+    for (int k = 0; k < 8; k++) {
+        char line[80];
+        decode_arm32_inst((unsigned int)(code_ptr + k), code_ptr[k], line);
+        term_add_line(line);
+    }
 }
 
 void execute_ecr_script(const char* filename) {
@@ -300,6 +452,47 @@ void execute_ecr_script(const char* filename) {
 
 void execute_command(const char* cmd) {
     if (cmd[0] == '\0') { term_add_line("perf > "); return; }
+
+    /* Parsing Pipes '|' */
+    int pipe_pos = -1;
+    for (int i = 0; cmd[i] != '\0'; i++) {
+        if (cmd[i] == '|') { pipe_pos = i; break; }
+    }
+
+    if (pipe_pos != -1) {
+        static char cmd1[64], cmd2[64];
+        int c1 = 0, c2 = 0;
+        for (int i = 0; i < pipe_pos && c1 < 63; i++) cmd1[c1++] = cmd[i];
+        while (c1 > 0 && cmd1[c1 - 1] == ' ') c1--;
+        cmd1[c1] = '\0';
+
+        int start2 = pipe_pos + 1;
+        while (cmd[start2] == ' ') start2++;
+        while (cmd[start2] != '\0' && c2 < 63) cmd2[c2++] = cmd[start2++];
+        while (c2 > 0 && cmd2[c2 - 1] == ' ') c2--;
+        cmd2[c2] = '\0';
+
+        pipe_buffer[0] = '\0';
+        pipe_capture_active = 1;
+        execute_command(cmd1);
+        pipe_capture_active = 0;
+
+        if (cmd2[0] != '\0') {
+            int has_space = 0;
+            for (int i = 0; cmd2[i] != '\0'; i++) if (cmd2[i] == ' ') { has_space = 1; break; }
+
+            static char full_cmd2[128];
+            if (!has_space) {
+                strcpy(full_cmd2, cmd2);
+                strcpy(full_cmd2 + strlen(full_cmd2), " @pipe");
+            } else {
+                strcpy(full_cmd2, cmd2);
+            }
+            execute_command(full_cmd2);
+        }
+        return;
+    }
+
     add_to_history(cmd);
 
     char prompt_line[128] = "perf > "; int p = 7;
@@ -308,7 +501,12 @@ void execute_command(const char* cmd) {
 
     int cmd_len = strlen(cmd);
 
-    if (strcmp(cmd, "comcow") == 0 || strcmp(cmd, "comcow info") == 0) {
+    if (cmd[0] == '@') {
+        const char* node_data = fs_read_file(cmd);
+        if (node_data) term_add_line(node_data);
+        else term_add_line("VFS: Synthetic node not found");
+    }
+    else if (strcmp(cmd, "comcow") == 0 || strcmp(cmd, "comcow info") == 0) {
         term_add_line("--- comcow Display Compositor Engine ---");
         char line1[64] = "Mode: "; int idx = 6; p = 0;
         while (comcow.mode_name[p]) line1[idx++] = comcow.mode_name[p++];
@@ -436,6 +634,7 @@ void execute_command(const char* cmd) {
     }
     else if (strncmp(cmd, "stat ", 5) == 0) execute_stat(cmd + 5);
     else if (strncmp(cmd, "xxd ", 4) == 0) execute_xxd(cmd + 4);
+    else if (strncmp(cmd, "disasm ", 7) == 0) execute_disasm(cmd + 7);
     else if (strncmp(cmd, "ecr ", 4) == 0) execute_ecr_script(cmd + 4);
     else if (cmd_len > 4 && strcmp(cmd + cmd_len - 4, ".ecr") == 0) execute_ecr_script(cmd);
     else if (strcmp(cmd, "whatweus") == 0 || strcmp(cmd, "fetch") == 0) execute_whatweus();
@@ -484,6 +683,7 @@ void execute_command(const char* cmd) {
                 term_add_line(line);
             }
         }
+        term_add_line("@cpu, @ram, @gpu, @fb0, @vfs         SYNTHETIC NODES");
     }
     else if (strncmp(cmd, "cat ", 4) == 0) {
         const char* target = cmd + 4;
@@ -520,7 +720,7 @@ void execute_command(const char* cmd) {
         }
     }
     else if (strcmp(cmd, "help") == 0) {
-        term_add_line("desk, fetch, zcatcher, lsblk, comcow, ztop, soundtest, mem, rgbdemo, ls, cd, pwd, cat, micro, mkdir, stat, xxd, ecr, set, unset, env, clear, reboot, shutdown, panic");
+        term_add_line("desk, fetch, zcatcher, lsblk, comcow, ztop, soundtest, mem, rgbdemo, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, ecr, set, unset, env, clear, reboot, shutdown, panic");
     }
     else term_add_line("perf: command not found. Type 'help'");
 }

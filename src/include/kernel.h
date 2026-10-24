@@ -289,4 +289,12 @@ void* memcpy(void* dest, const void* src, unsigned int n);
 void* memmove(void* dest, const void* src, unsigned int n);
 int memcmp(const void* s1, const void* s2, unsigned int n);
 
+/* Pipeline & Synthetic Nodes */
+extern char pipe_buffer[4096];
+extern int pipe_capture_active;
+
+/* Some Prototypes */
+const char* fs_read_file(const char* filename);
+void execute_disasm(const char* arg);
+
 #endif

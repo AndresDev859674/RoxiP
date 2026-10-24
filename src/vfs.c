@@ -2,6 +2,7 @@
 
 file_record_t fs_table[MAX_VFS_FILES];
 int fs_file_count = 0;
+static char synthetic_buf[2048];
 
 static void pflash_write_byte(unsigned int offset, unsigned char val) {
     volatile unsigned char* flash = (volatile unsigned char*)STORAGE_FLASH_BASE;
@@ -73,8 +74,49 @@ void init_filesystems(void) {
     vfs_sync_to_storage();
 }
 
-/* Zero-copy Read API: returns direct pointer to memory */
 const char* fs_read_file(const char* filename) {
+    /* Synthetic RoxiP Nodes */
+    if (filename[0] == '@') {
+        synthetic_buf[0] = '\0';
+        if (strcmp(filename, "@cpu") == 0) {
+            strcpy(synthetic_buf, "CPU: ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), cpu_model_string);
+            strcpy(synthetic_buf + strlen(synthetic_buf), "\nArch: ARMv5TEJ (ARM926EJ-S)\nCore ID: 0x41069265");
+            return synthetic_buf;
+        } else if (strcmp(filename, "@ram") == 0) {
+            char used[16], total[16];
+            int_to_str(get_used_heap_bytes(), used);
+            int_to_str(HEAP_SIZE, total);
+            strcpy(synthetic_buf, "RAM Heap Used : ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), used);
+            strcpy(synthetic_buf + strlen(synthetic_buf), " B\nRAM Heap Total: ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), total);
+            strcpy(synthetic_buf + strlen(synthetic_buf), " B");
+            return synthetic_buf;
+        } else if (strcmp(filename, "@gpu") == 0) {
+            strcpy(synthetic_buf, "Engine: comcow Compositor\nMode: ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), comcow.mode_name);
+            strcpy(synthetic_buf + strlen(synthetic_buf), "\nBuffer: Double Buffered PL110");
+            return synthetic_buf;
+        } else if (strcmp(filename, "@fb0") == 0) {
+            char hex[12];
+            hex_to_str((unsigned int)fb_pixels, hex);
+            strcpy(synthetic_buf, "FB Base: ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), hex);
+            strcpy(synthetic_buf + strlen(synthetic_buf), "\nRes: 320x200 / 80x25\nSize: 614400 Bytes");
+            return synthetic_buf;
+        } else if (strcmp(filename, "@vfs") == 0) {
+            char num[16];
+            int_to_str(fs_file_count, num);
+            strcpy(synthetic_buf, "Type: RoxiP Synthetic/PFlash VFS\nFile Count: ");
+            strcpy(synthetic_buf + strlen(synthetic_buf), num);
+            strcpy(synthetic_buf + strlen(synthetic_buf), "\nMax Payload: 2 MB");
+            return synthetic_buf;
+        } else if (strcmp(filename, "@pipe") == 0) {
+            return pipe_buffer;
+        }
+    }
+
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
             if (fs_table[i].is_dir) return 0;
@@ -84,7 +126,6 @@ const char* fs_read_file(const char* filename) {
     return 0;
 }
 
-/* Fast Write API using memcpy up to 2 MB */
 int fs_write_file(const char* filename, const char* content) {
     int len = strlen(content);
     if (len >= MAX_FILE_CONTENT) len = MAX_FILE_CONTENT - 1;
