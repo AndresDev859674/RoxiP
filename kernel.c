@@ -1,8 +1,6 @@
-/* ==============================================================================
- * RoxiP Kernel Core - comcow Screen Compositor & Integrated OS Subsystems
- * Target: ARM32 Bare-Metal (QEMU versatilepb / PL110 Display)
- * Language: C (Bare-Metal, no stdlib)
- * ============================================================================== */
+/*
+ * RoxiP Kernel Core, A bare-metal operating-system (i hate my own code)
+*/
 
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
@@ -76,10 +74,11 @@
 #define TERM_ROWS 18
 #define TERM_COLS 74
 #define MAX_BOOT_LOGS 12
-#define MAX_XFS_FILES 16
+#define MAX_VFS_FILES 16
 #define MAX_FILENAME_LEN 64
-#define MAX_FILE_CONTENT 256
-#define MAX_ENV_VARS 16
+#define MAX_FILE_CONTENT 65536
+#define MAX_ENV_VARS     16
+#define MAX_VFS_FILES    16
 #define MAX_ENV_KEY 32
 #define MAX_ENV_VAL 64
 #define MAX_CMD_HIST 16
@@ -245,7 +244,7 @@ static char term_lines[TERM_ROWS][TERM_COLS];
 static int term_row_count = 0;
 
 /* Storage Array */
-static file_record_t fs_table[MAX_XFS_FILES];
+static file_record_t fs_table[MAX_VFS_FILES];
 static int fs_file_count = 0;
 static int dbg_line = 0;
 
@@ -439,7 +438,7 @@ static void init_pl110_lcd(void) {
 }
 
 static void init_heap(void) {
-    dbg_log("    [HEAP 1/3] Initializing ARM Memory Arena...");
+    dbg_log("    [HEAP 1/3] Initializing Memory Arena...");
     dbg_log("    [HEAP 2/3] Aligning heap after __bss_end...");
 
     unsigned int heap_start = ((unsigned int)__bss_end + 15) & ~15;
@@ -519,7 +518,7 @@ void free(void* ptr) {
 static void init_hda_audio(void) {
     strcpy(audio_model_string, "ARM Generic MMIO Audio Codec");
     audio_initialized = 1;
-    log_boot_event("[OK] ARM Generic Audio subsystem active");
+    log_boot_event("[OK] Generic Audio subsystem active");
 }
 
 static unsigned char rgb_to_vga_color(rgb_color_t color) {
@@ -604,7 +603,7 @@ static void init_env_vars(void) {
         env_table[i].used = 0;
     }
     strcpy(env_table[0].key, "OS");
-    strcpy(env_table[0].value, "RoxiP-ARM");
+    strcpy(env_table[0].value, "RoxiP");
     env_table[0].used = 1;
 
     strcpy(env_table[1].key, "SHELL");
@@ -666,7 +665,7 @@ void kernel_panic(const char* message) {
     vga_clear(make_color(COLOR_WHITE, COLOR_RED));
 
     vga_draw_string("================================================================================", make_color(COLOR_YELLOW, COLOR_RED), 0, 1);
-    vga_draw_string("                       *** ROXIP KERNEL PANIC ***                               ", make_color(COLOR_WHITE, COLOR_RED), 0, 3);
+    vga_draw_string("                           Roxip Kernel Panic!                                  ", make_color(COLOR_WHITE, COLOR_RED), 0, 3);
     vga_draw_string("================================================================================", make_color(COLOR_YELLOW, COLOR_RED), 0, 5);
 
     vga_draw_string("A critical hardware exception occurred and the system was halted safely.", make_color(COLOR_WHITE, COLOR_RED), 2, 8);
@@ -674,7 +673,7 @@ void kernel_panic(const char* message) {
     vga_draw_string(message, make_color(COLOR_WHITE, COLOR_RED), 10, 10);
 
     vga_draw_string("System Status : HALTED (Triple-Fault Protection Active)", make_color(COLOR_LIGHT_GREY, COLOR_RED), 2, 13);
-    vga_draw_string("Action        : Restart QEMU machine to recover.", make_color(COLOR_LIGHT_GREY, COLOR_RED), 2, 15);
+    vga_draw_string("Action        : Restart your machine to recover.", make_color(COLOR_LIGHT_GREY, COLOR_RED), 2, 15);
 
     vga_flush();
 
@@ -742,7 +741,7 @@ static void detect_gpu(char* out_buf) {
 typedef struct {
     unsigned int magic;
     int file_count;
-    file_record_t files[MAX_XFS_FILES];
+    file_record_t files[MAX_VFS_FILES];
 } storage_header_t;
 
 /* Writes a single byte using standard CFI NOR Flash protocol (QEMU pflash01) */
@@ -753,23 +752,35 @@ static void pflash_write_byte(unsigned int offset, unsigned char val) {
     flash[offset] = 0xFF; /* Reset Flash to Read Array mode */
 }
 
-/* Flushes VFS table to roxip.storage with Dirty Check (Zero Lag + Real Persistence) */
 static void vfs_sync_to_storage(void) {
-    storage_header_t header;
-    header.magic = STORAGE_MAGIC;
-    header.file_count = fs_file_count;
+    volatile unsigned char* flash = (volatile unsigned char*)STORAGE_FLASH_BASE;
 
-    for (int i = 0; i < MAX_XFS_FILES; i++) {
-        header.files[i] = fs_table[i];
+    /* 1. Sync magic signature */
+    unsigned int magic = STORAGE_MAGIC;
+    unsigned char* magic_ptr = (unsigned char*)&magic;
+    for (unsigned int i = 0; i < sizeof(unsigned int); i++) {
+        if (flash[i] != magic_ptr[i]) {
+            pflash_write_byte(i, magic_ptr[i]);
+        }
     }
 
-    unsigned char* src = (unsigned char*)&header;
-    volatile unsigned char* flash_read = (volatile unsigned char*)STORAGE_FLASH_BASE;
+    /* 2. Sync file count */
+    unsigned char* count_ptr = (unsigned char*)&fs_file_count;
+    unsigned int count_offset = sizeof(unsigned int);
+    for (unsigned int i = 0; i < sizeof(int); i++) {
+        if (flash[count_offset + i] != count_ptr[i]) {
+            pflash_write_byte(count_offset + i, count_ptr[i]);
+        }
+    }
 
-    /* Dirty Check: Only write bytes that have actually changed */
-    for (unsigned int i = 0; i < sizeof(storage_header_t); i++) {
-        if (flash_read[i] != src[i]) {
-            pflash_write_byte(i, src[i]);
+    /* 3. Sync file records array directly from BSS table */
+    unsigned char* fs_ptr = (unsigned char*)fs_table;
+    unsigned int table_offset = sizeof(unsigned int) + sizeof(int);
+    unsigned int table_size = sizeof(file_record_t) * MAX_VFS_FILES;
+
+    for (unsigned int i = 0; i < table_size; i++) {
+        if (flash[table_offset + i] != fs_ptr[i]) {
+            pflash_write_byte(table_offset + i, fs_ptr[i]);
         }
     }
 }
@@ -783,7 +794,7 @@ static int vfs_load_from_storage(void) {
     }
 
     fs_file_count = flash->file_count;
-    for (int i = 0; i < MAX_XFS_FILES; i++) {
+    for (int i = 0; i < MAX_VFS_FILES; i++) {
         fs_table[i] = flash->files[i];
     }
     return 1;
@@ -838,7 +849,7 @@ static int fs_write_file(const char* filename, const char* content) {
         }
     }
 
-    if (fs_file_count < MAX_XFS_FILES) {
+    if (fs_file_count < MAX_VFS_FILES) {
         int idx = fs_file_count;
         strcpy(fs_table[idx].name, filename);
         strcpy(fs_table[idx].content, content);
@@ -857,7 +868,7 @@ static int fs_mkdir(const char* dirname) {
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, dirname) == 0) return 0;
     }
-    if (fs_file_count < MAX_XFS_FILES) {
+    if (fs_file_count < MAX_VFS_FILES) {
         int idx = fs_file_count;
         strcpy(fs_table[idx].name, dirname);
         fs_table[idx].content[0] = '\0';
@@ -894,7 +905,7 @@ static void comcow_set_mode(int mode_id) {
         strcpy(comcow.mode_name, "80x50 High-Density Text");
         comcow.active_mode_id = 3;
     } else if (mode_id == 4) {
-        strcpy(comcow.mode_name, "320x200 ARM Software Framebuffer");
+        strcpy(comcow.mode_name, "320x200 Software Framebuffer");
         comcow.active_mode_id = 4;
     }
 }
@@ -1000,7 +1011,7 @@ static void poll_kmi_mouse(void) {
     }
 }
 
-static const unsigned char font8x8_basic[128][8] = {
+static const unsigned char font8x8_basic[256][8] = {
     [' '] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
     ['!'] = {0x18, 0x18, 0x18, 0x18, 0x00, 0x00, 0x18, 0x00},
     ['#'] = {0x24, 0x24, 0xff, 0x24, 0x24, 0xff, 0x24, 0x24},
@@ -1086,7 +1097,9 @@ static const unsigned char font8x8_basic[128][8] = {
     ['6'] = {0x3c, 0x60, 0x7c, 0x66, 0x66, 0x66, 0x3c, 0x00},
     ['7'] = {0x7e, 0x06, 0x0c, 0x18, 0x30, 0x30, 0x30, 0x00},
     ['8'] = {0x3c, 0x66, 0x66, 0x3c, 0x66, 0x66, 0x3c, 0x00},
-    ['9'] = {0x3c, 0x66, 0x66, 0x3e, 0x06, 0x0c, 0x38, 0x00}
+    ['9'] = {0x3c, 0x66, 0x66, 0x3e, 0x06, 0x0c, 0x38, 0x00},
+
+    [176] = {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55}
 };
 
 /* Pipeline: Render 80x25 Grid EXCLUSIVELY into the QEMU Hardware Framebuffer */
@@ -1104,7 +1117,6 @@ static void vga_flush(void) {
             vga_virtual_buffer[entry_idx] = entry;
 
             unsigned char c = (unsigned char)(entry & 0xFF);
-            if (c >= 128) c = '?';
 
             unsigned char color_attr = (entry >> 8) & 0xFF;
             unsigned char bg_idx = (color_attr >> 4) & 0x0F;
@@ -1246,8 +1258,8 @@ static void term_clear_history(void) {
 }
 
 static void execute_whatweus(void) {
-    term_add_line("  /\\        OS: RoxiP OS v0.1 (ARM Edition)");
-    term_add_line(" /  \\       Kernel: Momentanum ARM v0.1");
+    term_add_line("  /\\        OS: RoxiP OS v0.1");
+    term_add_line(" /  \\       Kernel: Momentanum v0.1");
     term_add_line("/ /\\ \\      Compositor: comcow Engine");
 
     char gpu_line[74] = "\\ \\/ /      GPU: ";
@@ -1331,7 +1343,7 @@ static void render_ztop_frame(void) {
     for (int x = 0; x < VGA_WIDTH; x++) {
         vga_draw_char_at(' ', header_color, x, 0);
     }
-    vga_draw_string(" RoxiP ztop v0.1 - Real-Time ARM System Monitor ", header_color, 0, 0);
+    vga_draw_string(" RoxiP ztop v0.1 - a minimal system monitor ", header_color, 0, 0);
 
     unsigned char bar_label = make_color(COLOR_LIGHT_GREEN, COLOR_BLACK);
     unsigned char bar_fill  = make_color(COLOR_LIGHT_CYAN, COLOR_BLACK);
@@ -1602,7 +1614,7 @@ static void system_shutdown(void) {
     vga_clear(make_color(COLOR_WHITE, COLOR_BLACK));
     vga_draw_string("================================================================================", make_color(COLOR_YELLOW, COLOR_BLACK), 0, 10);
     vga_draw_string("                    System is powering down safely...                           ", make_color(COLOR_WHITE, COLOR_BLACK), 0, 11);
-    vga_draw_string("                    It is now safe to close QEMU / turn off.                    ", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 0, 12);
+    vga_draw_string("                    It is now safe to turn off.                    ", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 0, 12);
     vga_draw_string("================================================================================", make_color(COLOR_YELLOW, COLOR_BLACK), 0, 13);
     vga_flush();
 
@@ -1663,7 +1675,7 @@ static void execute_zcatcher(void) {
     char hex_buf[12];
     char num_buf[16];
 
-    term_add_line("================ [ zcatcher Hardware Inspector v0.2 ] ================");
+    term_add_line(" ");
 
     /* 1. Read VersatilePB SYS_ID Register (0x10000000) */
     volatile unsigned int* sys_id_reg = (volatile unsigned int*)(0x10000000);
@@ -1723,7 +1735,7 @@ static void execute_zcatcher(void) {
     strcpy(mem_line + 20 + strlen(num_buf), " Bytes / 524288 Bytes");
     term_add_line(mem_line);
 
-    term_add_line("======================================================================");
+    term_add_line(" ");
 }
 
 /* Dynamic Block Devices & Memory Regions Inspector (lsblk) */
@@ -1759,7 +1771,7 @@ static void execute_lsblk(void) {
     term_add_line(fb_line);
 
     /* Region 4: Virtual File System Memory Table */
-    char vfs_line[80] = "vfs_xfs0     31:0    vfs    RAM         ";
+    char vfs_line[80] = "vfs_0     31:0    vfs    RAM         ";
     int total_vfs_bytes = 0;
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used) total_vfs_bytes += fs_table[i].size;
@@ -1979,14 +1991,28 @@ static void execute_command(const char* cmd) {
         for (int i = 0; i < boot_log_count; i++) term_add_line(boot_logs[i]);
     }
     else if (strcmp(cmd, "desk") == 0 || strcmp(cmd, "DESK") == 0) current_mode = MODE_DESK;
-    else if (strcmp(cmd, "ls") == 0) {
+    else if (strcmp(cmd, "ls") == 0 || strncmp(cmd, "ls ", 3) == 0) {
         term_add_line("NAME                    SIZE        FS TYPE");
         term_add_line("-------------------------------------------");
         for (int f = 0; f < fs_file_count; f++) {
             if (fs_table[f].used) {
                 char line[64];
                 int idx = 0;
-                const char* n = fs_table[f].name;
+
+                /* Truncate visually to 20 chars with "..." if name exceeds bounds */
+                char display_name[24];
+                int n_len = strlen(fs_table[f].name);
+                if (n_len > 20) {
+                    for (int k = 0; k < 17; k++) display_name[k] = fs_table[f].name[k];
+                    display_name[17] = '.';
+                    display_name[18] = '.';
+                    display_name[19] = '.';
+                    display_name[20] = '\0';
+                } else {
+                    strcpy(display_name, fs_table[f].name);
+                }
+
+                const char* n = display_name;
                 while (*n) {
                     line[idx++] = *n++;
                 }
@@ -2003,8 +2029,12 @@ static void execute_command(const char* cmd) {
                         line[idx++] = ' ';
                     }
                 } else {
-                    line[idx++] = '0' + (fs_table[f].size / 10);
-                    line[idx++] = '0' + (fs_table[f].size % 10);
+                    char sz_buf[16];
+                    int_to_str(fs_table[f].size, sz_buf);
+                    int s_ptr = 0;
+                    while (sz_buf[s_ptr]) {
+                        line[idx++] = sz_buf[s_ptr++];
+                    }
                     line[idx++] = 'B';
                     while (idx < 36) {
                         line[idx++] = ' ';
@@ -2147,7 +2177,7 @@ static void draw_top_header(void) {
     for (int x = 0; x < VGA_WIDTH; x++) {
         vga_draw_char_at(' ', bar_top, x, 0);
     }
-    vga_draw_string(" RoxiP OS ARM (comcow)", bar_top, 0, 0);
+    vga_draw_string(" RoxiP Core (comcow)", bar_top, 0, 0);
     const char anim_chars[] = {'|', '/', '-', '\\'};
     char current_anim = anim_chars[(bios_anim_frame / 4) % 4];
     bios_anim_frame++;
@@ -2194,15 +2224,15 @@ static void render_desktop(void) {
         vga_draw_string(cpu_model_string, box_bg, 21, 5);
         vga_draw_string("Primary Disk   : ", box_bg, 4, 7);
         vga_draw_string(disk_model_string, box_bg, 21, 7);
-        vga_draw_string("Compositor     : comcow Engine (ARM)", box_bg, 4, 9);
+        vga_draw_string("Compositor     : comcow Engine", box_bg, 4, 9);
         vga_draw_string("System Date    : [09/30/2026]", box_bg, 4, 10);
-        vga_draw_string("File System    : FAT32 / VFAT & VFS", box_bg, 4, 12);
+        vga_draw_string("File System    : VFS (FAT32 / VFAT supports)", box_bg, 4, 12);
         vga_draw_string("Console Shell  : perf Terminal (perf >)", box_bg, 4, 13);
     } else if (active_tab == 1) {
         vga_draw_string(" Settings & Themes ", (current_theme == THEME_MAC_MONO) ? make_color(COLOR_WHITE, COLOR_BLACK) : make_color(COLOR_YELLOW, COLOR_BLUE), 5, 3);
         vga_draw_string("Select Desktop Theme:", box_bg, 4, 5);
         vga_draw_string(current_theme == THEME_DEFAULT ? "[X] 1. Default Blue Classic" : "[ ] 1. Default Blue Classic", box_bg, 6, 7);
-        vga_draw_string(current_theme == THEME_MAC_MONO ? "[X] 2. Classic Mac Monochrome" : "[ ] 2. Classic Mac Monochrome", box_bg, 6, 9);
+        vga_draw_string(current_theme == THEME_MAC_MONO ? "[X] 2. Monochrome Theme" : "[ ] 2. Monochrome Theme", box_bg, 6, 9);
         vga_draw_string("Press [1] or [2] to apply theme.", box_bg, 4, 12);
     } else {
         vga_draw_string(" Exit RoxiP Desk ", (current_theme == THEME_MAC_MONO) ? make_color(COLOR_WHITE, COLOR_BLACK) : make_color(COLOR_YELLOW, COLOR_BLUE), 5, 3);
@@ -2421,9 +2451,9 @@ static void render_cli(void) {
         }
     }
 
-    vga_draw_string("RoxiP OS v0.1 - Monolithic Kernel (ARM32 perf Terminal)", make_color(COLOR_WHITE, COLOR_BLACK), 0, 0);
+    vga_draw_string("RoxiP OS v0.1 - Monolithic Kernel (perf Terminal)", make_color(COLOR_WHITE, COLOR_BLACK), 0, 0);
     vga_draw_string("Type 'desk' to launch Desktop Hub or 'fetch' for system info.", make_color(COLOR_DARK_GREY, COLOR_BLACK), 0, 1);
-    vga_draw_string("Welcome to RoxiP OS! A lightweight OS for chinese systems", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 1, 2);
+    vga_draw_string("Welcome to RoxiP OS! A bare-metal OS based on .bin", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 1, 2);
 
     for (int i = 0; i < term_row_count; i++) {
         vga_draw_string(term_lines[i], make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 0, 3 + i);
@@ -2517,10 +2547,116 @@ static void process_char_input(char c) {
     }
 }
 
+/* VersatilePB SP804 System Timer MMIO Registers */
+#define TIMER0_BASE  0x101E2000
+#define TIMER0_LOAD  (*((volatile unsigned int*)(TIMER0_BASE + 0x00)))
+#define TIMER0_VALUE (*((volatile unsigned int*)(TIMER0_BASE + 0x04)))
+#define TIMER0_CTRL  (*((volatile unsigned int*)(TIMER0_BASE + 0x08)))
+
+/* Precise Hardware Delay in Milliseconds using ARM SP804 Timer (1 MHz Clock) */
+static void delay_ms(unsigned int ms) {
+    TIMER0_CTRL = 0x82; /* Bit 7: Enable | Bit 1: 32-bit counter mode */
+    unsigned int start = TIMER0_VALUE;
+    unsigned int ticks_to_wait = ms * 1000; /* 1000 ticks = 1 ms */
+
+    while ((start - TIMER0_VALUE) < ticks_to_wait) {
+        asm volatile("nop");
+    }
+}
+
+/* Interactive ARM Bootloader Menu with Real-Time Hardware Timer & Arrow Navigation */
+static void run_arm_bootloader(void) {
+    int seconds_remaining = 10;
+    int selected_option = 0; /* 0 = Boot OS, 1 = Reboot */
+
+    unsigned char logo_color  = make_color(COLOR_LIGHT_MAGENTA, COLOR_BLACK);
+    unsigned char title_color = make_color(COLOR_YELLOW, COLOR_BLACK);
+    unsigned char timer_color = make_color(COLOR_LIGHT_CYAN, COLOR_BLACK);
+
+    while (seconds_remaining > 0) {
+        vga_clear(make_color(COLOR_WHITE, COLOR_BLACK));
+
+        /* 1. Background Starfield Effect */
+        for (int y = 0; y < VGA_HEIGHT; y++) {
+            for (int x = 0; x < VGA_WIDTH; x++) {
+                unsigned int hash = ((x * 37) ^ (y * 109) ^ (x * y * 17)) % 100;
+                if (hash < 2) vga_draw_char_at('*', make_color(COLOR_WHITE, COLOR_BLACK), x, y);
+                else if (hash < 6) vga_draw_char_at('.', make_color(COLOR_DARK_GREY, COLOR_BLACK), x, y);
+            }
+        }
+
+        /* 2. Render Purple whatweus Logo */
+        vga_draw_string("  /\\  ", logo_color, 37, 2);
+        vga_draw_string(" /  \\ ", logo_color, 37, 3);
+        vga_draw_string("/ /\\ \\", logo_color, 37, 4);
+        vga_draw_string("\\ \\/ /", logo_color, 37, 5);
+        vga_draw_string(" \\  / ", logo_color, 37, 6);
+        vga_draw_string("  \\/  ", logo_color, 37, 7);
+
+        /* 3. Title Banner shifted down */
+        vga_draw_string("=== RoxiP Bootloader v0.2 (Core) ===", title_color, 20, 9);
+
+        /* 4. Menu Options with Dynamic Arrow Selection */
+        unsigned char opt1_color = (selected_option == 0) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
+        unsigned char opt2_color = (selected_option == 1) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
+
+        vga_draw_string(selected_option == 0 ? " > [1] Boot RoxiP OS   " : "   [1] Boot RoxiP OS   ", opt1_color, 28, 12);
+        vga_draw_string(selected_option == 1 ? " > [2] Reboot System   " : "   [2] Reboot System   ", opt2_color, 28, 14);
+
+        /* 5. Countdown Timer String */
+        char timer_str[80] = "Auto-booting in ";
+        char sec_buf[8];
+        int_to_str(seconds_remaining, sec_buf);
+        strcpy(timer_str + 16, sec_buf);
+        strcpy(timer_str + 16 + strlen(sec_buf), "s... (Arrows=Select, ENTER=Confirm)");
+
+        vga_draw_string(timer_str, timer_color, 16, 17);
+
+        vga_flush();
+
+        /* Poll input for exactly 1 second (20 sub-steps * 50ms) */
+        int key_interrupted = 0;
+        for (int step = 0; step < 20; step++) {
+            char c = get_keyboard_input();
+            if (c) {
+                if (c == KEY_UP) {
+                    selected_option = 0;
+                    key_interrupted = 1;
+                    break;
+                }
+                else if (c == KEY_DOWN) {
+                    selected_option = 1;
+                    key_interrupted = 1;
+                    break;
+                }
+                else if (c == '1') {
+                    selected_option = 0;
+                    return;
+                }
+                else if (c == '2') {
+                    system_reboot();
+                }
+                else if (c == '\n' || c == '\r') {
+                    if (selected_option == 0) {
+                        return;
+                    } else {
+                        system_reboot();
+                    }
+                }
+            }
+            delay_ms(50); /* Real-time 50 ms delay via SP804 Timer */
+        }
+
+        if (!key_interrupted) {
+            seconds_remaining--;
+        }
+    }
+}
+
 /* Kernel Entry Point */
 void kmain(void) {
     dbg_line = 0;
-    dbg_log("[01/12] Entering ARM kmain()...");
+    dbg_log("[01/12] Entering kmain()...");
 
     dbg_log("[02/12] Calling init_heap()...");
     init_heap();
@@ -2553,7 +2689,13 @@ void kmain(void) {
     dbg_log("[11/12] Initializing UART Serial Input Driver...");
     log_boot_event("[OK] ARM PL011 UART Serial Input Active");
 
-    dbg_log("[12/12] Launching CLI Shell View...");
+    init_kmi_keyboard();
+    init_kmi_mouse();
+
+    dbg_log("[12/12] Launching Interactive Bootloader...");
+    run_arm_bootloader(); /* <--- Menú del Bootloader con conteo */
+
+    dbg_log("Launching CLI Shell View...");
     render_cli();
 
     init_kmi_keyboard();
