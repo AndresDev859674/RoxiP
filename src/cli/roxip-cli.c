@@ -7,7 +7,7 @@
 #include <string.h>
 
 #define MAX_FILENAME_LEN 64
-#define MAX_FILE_CONTENT 65536
+#define MAX_FILE_CONTENT 2097152
 #define MAX_VFS_FILES    16
 #define STORAGE_MAGIC    0x53465053
 
@@ -27,13 +27,14 @@ typedef struct {
 } storage_header_t;
 
 static void print_usage(const char* prog_name) {
-    printf("RoxiP Tools v0.1\n");
+    printf("RoxiP Tools v0.2\n");
     printf("Usage:\n");
     printf("  %s create <storage_path> <size_mb>\n", prog_name);
     printf("  %s list   <storage_path>\n", prog_name);
-    printf("  %s read   <storage_path> <vfs_name>\n", prog_name);
+    printf("  %s read   <storage_path> <vfs_name> [host_out_path]\n", prog_name);
     printf("  %s write  <storage_path> <vfs_name> <text_or_host_path> [-f|--file]\n", prog_name);
     printf("  %s mkdir  <storage_path> <dirname>\n", prog_name);
+    printf("  %s rm     <storage_path> <vfs_name_or_dir>\n", prog_name);
 }
 
 static int load_header(const char* path, storage_header_t* header, FILE** out_fp) {
@@ -130,7 +131,7 @@ static int cmd_list(const char* path) {
     return 0;
 }
 
-static int cmd_read(const char* path, const char* filename) {
+static int cmd_read(const char* path, const char* filename, const char* host_out_path) {
     storage_header_t* header = (storage_header_t*)malloc(sizeof(storage_header_t));
     if (!header) return 1;
 
@@ -146,7 +147,24 @@ static int cmd_read(const char* path, const char* filename) {
                 free(header);
                 return 1;
             }
-            printf("%s\n", header->files[i].content);
+
+            if (host_out_path) {
+                FILE* out_file = fopen(host_out_path, "wb");
+                if (!out_file) {
+                    perror("Error creating host output file");
+                    free(header);
+                    return 1;
+                }
+                fwrite(header->files[i].content, 1, header->files[i].size, out_file);
+                fclose(out_file);
+                printf("Successfully extracted binary '%s' to host file '%s' (%d bytes)\n",
+                       filename, host_out_path, header->files[i].size);
+            } else {
+                /* Dump raw bytes out to stdout safely */
+                fwrite(header->files[i].content, 1, header->files[i].size, stdout);
+                printf("\n");
+            }
+
             free(header);
             return 0;
         }
@@ -161,32 +179,31 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
     char* file_payload = (char*)calloc(1, MAX_FILE_CONTENT);
     if (!file_payload) return 1;
 
-    FILE* host_file = NULL;
+    size_t payload_size = 0;
+
     if (is_file_flag) {
-        host_file = fopen(input_arg, "rb");
+        FILE* host_file = fopen(input_arg, "rb");
         if (!host_file) {
             perror("Error opening host file");
             free(file_payload);
             return 1;
         }
-    } else {
-        host_file = fopen(input_arg, "rb");
-    }
 
-    if (host_file) {
-        size_t bytes_read = fread(file_payload, 1, MAX_FILE_CONTENT - 1, host_file);
-        file_payload[bytes_read] = '\0';
+        /* Lectura de bytes crudos (Binarios/PNG/Executables) */
+        payload_size = fread(file_payload, 1, MAX_FILE_CONTENT, host_file);
 
         fseek(host_file, 0, SEEK_END);
         long total_file_size = ftell(host_file);
         fclose(host_file);
 
-        if (total_file_size >= MAX_FILE_CONTENT) {
-            printf("[Warning] Host file size (%ld bytes) exceeds MAX_FILE_CONTENT (%d bytes). Truncated!\n",
-                   total_file_size, MAX_FILE_CONTENT - 1);
+        if (total_file_size > MAX_FILE_CONTENT) {
+            printf("[Warning] Host file size (%ld bytes) exceeds VFS payload limit (%d bytes). Truncated!\n",
+                   total_file_size, MAX_FILE_CONTENT);
         }
     } else {
-        snprintf(file_payload, MAX_FILE_CONTENT, "%s", input_arg);
+        payload_size = strlen(input_arg);
+        if (payload_size >= MAX_FILE_CONTENT) payload_size = MAX_FILE_CONTENT - 1;
+        memcpy(file_payload, input_arg, payload_size);
     }
 
     storage_header_t* header = (storage_header_t*)malloc(sizeof(storage_header_t));
@@ -203,7 +220,7 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
     for (int i = 0; i < MAX_VFS_FILES; i++) {
         if (header->files[i].used && strcmp(header->files[i].name, vfs_name) == 0) {
             if (header->files[i].is_dir) {
-                fprintf(stderr, "Error: Cannot write text to directory '%s'.\n", vfs_name);
+                fprintf(stderr, "Error: Cannot overwrite directory '%s'.\n", vfs_name);
                 fclose(fp);
                 free(file_payload);
                 free(header);
@@ -233,8 +250,8 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
 
     file_record_t* rec = &header->files[target_idx];
     snprintf(rec->name, MAX_FILENAME_LEN, "%s", vfs_name);
-    memcpy(rec->content, file_payload, MAX_FILE_CONTENT);
-    rec->size = (int)strlen(rec->content);
+    memcpy(rec->content, file_payload, payload_size);
+    rec->size = (int)payload_size;
     rec->used = 1;
     rec->is_vfat = (strlen(vfs_name) > 11) ? 1 : 0;
     rec->is_dir = 0;
@@ -243,7 +260,7 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
     fwrite(header, sizeof(storage_header_t), 1, fp);
     fclose(fp);
 
-    printf("Successfully wrote '%s' into %s (%d bytes)\n", vfs_name, path, rec->size);
+    printf("Successfully wrote '%s' into %s (%d bytes payload)\n", vfs_name, path, rec->size);
 
     free(file_payload);
     free(header);
@@ -301,6 +318,41 @@ static int cmd_mkdir(const char* path, const char* dirname) {
     return 0;
 }
 
+static int cmd_rm(const char* path, const char* target_name) {
+    storage_header_t* header = (storage_header_t*)malloc(sizeof(storage_header_t));
+    FILE* fp = NULL;
+
+    if (!header || !load_header(path, header, &fp)) {
+        if (header) free(header);
+        return 1;
+    }
+
+    int found = 0;
+    for (int i = 0; i < MAX_VFS_FILES; i++) {
+        if (header->files[i].used && strcmp(header->files[i].name, target_name) == 0) {
+            memset(&header->files[i], 0, sizeof(file_record_t));
+            header->file_count--;
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found) {
+        fprintf(stderr, "Error: Target '%s' not found in storage image.\n", target_name);
+        fclose(fp);
+        free(header);
+        return 1;
+    }
+
+    fseek(fp, 0, SEEK_SET);
+    fwrite(header, sizeof(storage_header_t), 1, fp);
+    fclose(fp);
+
+    printf("Successfully removed '%s' from %s\n", target_name, path);
+    free(header);
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         print_usage(argv[0]);
@@ -322,10 +374,11 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(cmd, "read") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s read <storage_path> <vfs_name>\n", argv[0]);
+            fprintf(stderr, "Usage: %s read <storage_path> <vfs_name> [host_out_path]\n", argv[0]);
             return 1;
         }
-        return cmd_read(path, argv[3]);
+        const char* host_out = (argc >= 5) ? argv[4] : NULL;
+        return cmd_read(path, argv[3], host_out);
     }
     else if (strcmp(cmd, "write") == 0) {
         if (argc < 5) {
@@ -340,7 +393,7 @@ int main(int argc, char* argv[]) {
         for (int i = 3; i < argc; i++) {
             if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "--file") == 0) {
                 is_file_flag = 1;
-                if (i + 1 < argc) {
+                if (i + 1 < argc && input_arg == NULL) {
                     input_arg = argv[++i];
                 }
             } else if (!vfs_name) {
@@ -363,6 +416,13 @@ int main(int argc, char* argv[]) {
             return 1;
         }
         return cmd_mkdir(path, argv[3]);
+    }
+    else if (strcmp(cmd, "rm") == 0 || strcmp(cmd, "delete") == 0) {
+        if (argc < 4) {
+            fprintf(stderr, "Usage: %s rm <storage_path> <vfs_name_or_dir>\n", argv[0]);
+            return 1;
+        }
+        return cmd_rm(path, argv[3]);
     }
 
     print_usage(argv[0]);
