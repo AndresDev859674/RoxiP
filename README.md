@@ -1,7 +1,7 @@
 ###### _<div align="right"></a><sub>simple, not required to exceed 15,000 lines of code</sub></div>_
 
 <p align="center">
-  <img style="width: 49%; height: auto;" alt="timerun" src="images/roxip-banner.png" />
+  <img style="width: 54%; height: 59%;" alt="timerun" src="images/roxip-banner.png" />
 </p>
 
 # roxiP
