@@ -3,17 +3,39 @@ CC = arm-none-eabi-gcc
 AS = arm-none-eabi-as
 OBJCOPY = arm-none-eabi-objcopy
 
+ROCKCHIP ?= 0
+BOARD ?= versatilepb
 DEBUG ?= 0
 BUILD_CLI ?= 0
 GDB_PORT ?= 7777
 
-COMMON_FLAGS = -mcpu=arm926ej-s -marm -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include
+# Force Rockchip board when ROCKCHIP=1 flag is passed
+ifeq ($(ROCKCHIP),1)
+    BOARD = rockchip
+endif
+
+# Select CPU target architecture based on active board
+ifeq ($(BOARD),rockchip)
+    ARCH_CPU ?= cortex-a7
+else
+    ARCH_CPU ?= arm926ej-s
+endif
+
+COMMON_FLAGS = -mcpu=$(ARCH_CPU) -marm -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD)
 
 ifeq ($(DEBUG),1)
     CFLAGS = $(COMMON_FLAGS) -O0 -g -DDEBUG
 else
     CFLAGS = $(COMMON_FLAGS) -O3 -flto -fomit-frame-pointer
 endif
+
+FIRMWARE_SRCS = $(wildcard firmware/$(BOARD)/*.c)
+FIRMWARE_OBJS = $(FIRMWARE_SRCS:.c=.o)
+
+DRIVER_OBJS = src/drivers/uart.o \
+              src/drivers/display.o \
+              src/drivers/input.o \
+              src/drivers/storage_audio.o
 
 UI_OBJS = src/ui/ui_core.o \
           src/ui/ui_cli.o \
@@ -22,8 +44,9 @@ UI_OBJS = src/ui/ui_core.o \
           src/ui/ui_demos.o
 
 OBJS = startup.o \
+       $(FIRMWARE_OBJS) \
+       $(DRIVER_OBJS) \
        src/memory.o \
-       src/drivers.o \
        src/yafs.o \
        src/graphics.o \
        src/shell.o \
@@ -35,10 +58,14 @@ ifeq ($(BUILD_CLI),1)
     TARGETS += roxip-cli
 endif
 
-.PHONY: all bin elf cli img img-run run qemu debug clean clean-all
+.PHONY: all bin elf cli img img-run run qemu debug rockchip clean clean-all
 
 # Default target
 all: $(TARGETS)
+
+# Target shortcut to build for Rockchip platform
+rockchip:
+	@$(MAKE) ROCKCHIP=1 all
 
 # Target for raw binary only
 bin: roxip.bin
@@ -55,7 +82,15 @@ roxip-cli: src/cli/roxip-cli.c
 
 # Assembly Startup Rule
 startup.o: startup.s
-	$(AS) -mcpu=arm926ej-s startup.s -o startup.o
+	$(AS) -mcpu=$(ARCH_CPU) startup.s -o startup.o
+
+# C Compilation Rule for firmware/
+firmware/$(BOARD)/%.o: firmware/$(BOARD)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# C Compilation Rule for src/drivers/
+src/drivers/%.o: src/drivers/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # C Compilation Rule for src/
 src/%.o: src/%.c
@@ -89,7 +124,7 @@ img: roxip.bin
 # Run monolithic .img directly in QEMU
 img-run: img
 	@echo "[QEMU] Booting RoxiP Kernel with roxip.img storage..."
-	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.img,if=pflash,format=raw -vga none -serial stdio
+	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.img,if=pflash,format=raw -vga none -serial stdio -audio driver=none
 
 # Emulate in QEMU (Standard mode)
 run qemu: roxip.bin
@@ -101,8 +136,8 @@ run qemu: roxip.bin
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
 	fi
-	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio
-
+	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -audio driver=none
+	
 # Launch QEMU frozen listening on custom GDB_PORT
 debug: roxip.bin
 	@if [ ! -f roxip.storage ]; then \
@@ -113,7 +148,7 @@ debug: roxip.bin
 	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -gdb tcp::$(GDB_PORT) -S
 
 clean:
-	rm -f src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img
+	rm -f firmware/*/*.o src/drivers/*.o src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img
 
 clean-all: clean
 	rm -f roxip.storage

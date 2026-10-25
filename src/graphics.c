@@ -210,7 +210,7 @@ void vga_draw_line(int x0, int y0, int x1, int y1, char c, unsigned char color) 
     }
 }
 
-/* NEW: VGA Wireframe Triangle */
+/* VGA Wireframe Triangle */
 void vga_draw_triangle(int x0, int y0, int x1, int y1, int x2, int y2, char c, unsigned char color) {
     vga_draw_line(x0, y0, x1, y1, c, color);
     vga_draw_line(x1, y1, x2, y2, c, color);

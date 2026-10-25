@@ -1,7 +1,7 @@
 ###### _<div align="right"></a><sub>simple, not required to exceed 15,000 lines of code</sub></div>_
 
 <p align="center">
-  <img src="images/roxip-banner.png" alt="roxip" width="32%" height="40%" />
+  <img src="assets/repo/roxip-banner.png" alt="roxip" width="32%" height="40%" />
 </p>
 
 # roxiP

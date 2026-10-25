@@ -1,4 +1,6 @@
 #include "kernel.h"
+#include "hal.h"
+#include "drivers.h"
 
 system_mode_t current_mode = MODE_PERF_CLI;
 desk_theme_t current_theme = THEME_DEFAULT;
@@ -72,8 +74,8 @@ static void run_bootloader(void) {
         vga_draw_string("\\ \\/ /", logo_color, 37, 5);
         vga_draw_string(" \\  / ", logo_color, 37, 6);
         vga_draw_string("  \\/  ", logo_color, 37, 7);
-
-        vga_draw_string("=== RoxiP Bootloader v0.1 (Core) ===", title_color, 22, 9);
+        
+        vga_draw_string("=== RoxiP Boot loader v0.1 (Core) ===", title_color, 22, 9);
 
         unsigned char opt1_color = (selected_option == 0) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
         unsigned char opt2_color = (selected_option == 1) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
@@ -110,39 +112,40 @@ static void run_bootloader(void) {
 
 void kmain(void) {
     dbg_line = 0;
-    dbg_log("[01/12] Entering kmain()...");
+    
+    /* Step 01: Initialize Board HAL & ARM Exception Vector Table first for Kernel Panic protection */
+    dbg_log("[01/12] Initializing Board HAL & Exception Vectors...");
+    board_init();
 
     dbg_log("[02/12] Calling init_heap()...");
     init_heap();
 
-    dbg_log("[03/12] Initializing ARM Vector Table...");
-    init_idt();
-
-    dbg_log("[04/12] Calling init_env_vars()...");
+    dbg_log("[03/12] Calling init_env_vars()...");
     init_env_vars();
 
-    dbg_log("[05/12] Querying CPU Architecture...");
+    dbg_log("[04/12] Querying CPU Architecture...");
     detect_cpu_brand(cpu_model_string);
 
-    dbg_log("[06/12] Initializing PL110 LCD Framebuffer...");
+    dbg_log("[05/12] Initializing PL110 LCD Framebuffer...");
     init_pl110_lcd();
     detect_gpu(gpu_model_string);
 
-    dbg_log("[07/12] Checking Audio Engine...");
+    dbg_log("[06/12] Checking Audio Engine...");
     init_hda_audio();
 
-    dbg_log("[08/12] Querying Storage Controller...");
+    dbg_log("[07/12] Querying Storage Controller...");
     detect_primary_disk(disk_model_string);
 
-    dbg_log("[09/12] Mounting File Systems...");
+    dbg_log("[08/12] Mounting File Systems...");
     init_filesystems();
 
-    dbg_log("[10/12] Initializing comcow Compositor...");
+    dbg_log("[09/12] Initializing comcow Compositor...");
     init_comcow();
 
-    dbg_log("[11/12] Initializing UART Serial Input Driver...");
+    dbg_log("[10/12] Initializing UART Serial Input Driver...");
     log_boot_event("[OK] ARM PL011 UART Serial Input Active");
 
+    dbg_log("[11/12] Initializing KMI Input Drivers...");
     init_kmi_keyboard();
     init_kmi_mouse();
 
