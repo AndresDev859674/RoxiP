@@ -15,14 +15,20 @@ else
     CFLAGS = $(COMMON_FLAGS) -O3 -flto -fomit-frame-pointer
 endif
 
+UI_OBJS = src/ui/ui_core.o \
+          src/ui/ui_cli.o \
+          src/ui/ui_desktop.o \
+          src/ui/ui_apps.o \
+          src/ui/ui_demos.o
+
 OBJS = startup.o \
        src/memory.o \
        src/drivers.o \
        src/vfs.o \
        src/graphics.o \
-       src/ui.o \
        src/shell.o \
-       src/kernel.o
+       src/kernel.o \
+       $(UI_OBJS)
 
 TARGETS = roxip.bin
 ifeq ($(BUILD_CLI),1)
@@ -53,6 +59,10 @@ startup.o: startup.s
 
 # C Compilation Rule for src/
 src/%.o: src/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# C Compilation Rule for src/ui/
+src/ui/%.o: src/ui/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link via GCC Driver
@@ -103,7 +113,7 @@ debug: roxip.bin
 	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -gdb tcp::$(GDB_PORT) -S
 
 clean:
-	rm -f src/*.o *.o *.elf *.bin roxip-cli roxip.img
+	rm -f src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img
 
 clean-all: clean
 	rm -f roxip.storage

@@ -156,6 +156,11 @@ void kmain(void) {
         timer_ticks++;
         poll_kmi_mouse();
 
+        if (current_mode == MODE_PERF_CLI || current_mode == MODE_FLOATCUBE || current_mode == MODE_RGBDEMO) {
+            redraw_current_view();
+            delay_ms(16);
+        }
+
         if (current_mode == MODE_FLOATCUBE) {
             redraw_current_view();
             delay_cycles(150000);

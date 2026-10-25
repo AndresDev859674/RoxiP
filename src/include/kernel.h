@@ -305,4 +305,7 @@ void execute_disasm(const char* arg);
 extern char pipe_buffer[4096];
 extern int pipe_capture_active;
 
+/* Ui Prototypes */
+void vga_draw_line(int x0, int y0, int x1, int y1, char c, unsigned char color);
+
 #endif

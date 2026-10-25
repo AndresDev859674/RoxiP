@@ -192,6 +192,23 @@ void vga_draw_string(const char* str, unsigned char color, int x, int y) {
     }
 }
 
+void vga_draw_line(int x0, int y0, int x1, int y1, char c, unsigned char color) {
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    int steps = 0;
+    while (steps++ < 100) {
+        vga_draw_char_at(c, color, x0, y0);
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 < dx)  { err += dx; y0 += sy; }
+    }
+}
+
 void draw_box(int start_x, int start_y, int width, int height, unsigned char border_color, unsigned char bg_color) {
     for (int y = start_y; y < start_y + height; y++) {
         for (int x = start_x; x < start_x + width; x++) vga_draw_char_at(' ', bg_color, x, y);
