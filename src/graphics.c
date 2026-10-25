@@ -93,7 +93,8 @@ const unsigned char font8x8_basic[256][8] = {
     ['7'] = {0x7e, 0x06, 0x0c, 0x18, 0x30, 0x30, 0x30, 0x00},
     ['8'] = {0x3c, 0x66, 0x66, 0x3c, 0x66, 0x66, 0x3c, 0x00},
     ['9'] = {0x3c, 0x66, 0x66, 0x3e, 0x06, 0x0c, 0x38, 0x00},
-    [176] = {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55}
+    [176] = {0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55, 0xAA, 0x55},
+    [219] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 };
 
 const int sin_table[36] = {
@@ -209,6 +210,40 @@ void vga_draw_line(int x0, int y0, int x1, int y1, char c, unsigned char color) 
     }
 }
 
+/* NEW: VGA Wireframe Triangle */
+void vga_draw_triangle(int x0, int y0, int x1, int y1, int x2, int y2, char c, unsigned char color) {
+    vga_draw_line(x0, y0, x1, y1, c, color);
+    vga_draw_line(x1, y1, x2, y2, c, color);
+    vga_draw_line(x2, y2, x0, y0, c, color);
+}
+
+/* VGA Circle Primitive (Bresenham Algorithm) */
+void vga_draw_circle(int cx, int cy, int radius, char c, unsigned char color) {
+    int x = radius;
+    int y = 0;
+    int err = 0;
+
+    while (x >= y) {
+        vga_draw_char_at(c, color, cx + x, cy + y);
+        vga_draw_char_at(c, color, cx + y, cy + x);
+        vga_draw_char_at(c, color, cx - y, cy + x);
+        vga_draw_char_at(c, color, cx - x, cy + y);
+        vga_draw_char_at(c, color, cx - x, cy - y);
+        vga_draw_char_at(c, color, cx - y, cy - x);
+        vga_draw_char_at(c, color, cx + y, cy - x);
+        vga_draw_char_at(c, color, cx + x, cy - y);
+
+        if (err <= 0) {
+            y += 1;
+            err += 2 * y + 1;
+        }
+        if (err > 0) {
+            x -= 1;
+            err -= 2 * x + 1;
+        }
+    }
+}
+
 void draw_box(int start_x, int start_y, int width, int height, unsigned char border_color, unsigned char bg_color) {
     for (int y = start_y; y < start_y + height; y++) {
         for (int x = start_x; x < start_x + width; x++) vga_draw_char_at(' ', bg_color, x, y);
@@ -281,6 +316,81 @@ static void rgb_set_pixel(rgb_framebuffer_t* fb, int x, int y, rgb_color_t color
 void rgb_fill_rect(rgb_framebuffer_t* fb, int rx, int ry, int rw, int rh, rgb_color_t color) {
     for (int y = ry; y < ry + rh; y++) {
         for (int x = rx; x < rx + rw; x++) rgb_set_pixel(fb, x, y, color);
+    }
+}
+
+/* Fast Integer Color Interpolation (Fixed Point 16-bit) */
+static inline rgb_color_t interpolate_rgb(rgb_color_t c1, rgb_color_t c2, int factor_256) {
+    rgb_color_t out;
+    out.r = (unsigned char)((c1.r * (256 - factor_256) + c2.r * factor_256) >> 8);
+    out.g = (unsigned char)((c1.g * (256 - factor_256) + c2.g * factor_256) >> 8);
+    out.b = (unsigned char)((c1.b * (256 - factor_256) + c2.b * factor_256) >> 8);
+    return out;
+}
+
+/* Gradient Line Primitive for RGB Framebuffer */
+void rgb_draw_line_gradient(rgb_framebuffer_t* fb, int x0, int y0, rgb_color_t c0, int x1, int y1, rgb_color_t c1) {
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    int total_steps = (dx > dy) ? dx : dy;
+    if (total_steps == 0) {
+        rgb_set_pixel(fb, x0, y0, c0);
+        return;
+    }
+
+    int current_step = 0;
+    while (1) {
+        int factor = (current_step * 256) / total_steps;
+        rgb_color_t c_curr = interpolate_rgb(c0, c1, factor);
+        rgb_set_pixel(fb, x0, y0, c_curr);
+
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 < dx)  { err += dx; y0 += sy; }
+        current_step++;
+    }
+}
+
+/* RGB Gradient Triangle (Gouraud Shading via Scanline)  */
+void rgb_draw_triangle_gradient(rgb_framebuffer_t* fb, 
+                                int x0, int y0, rgb_color_t c0,
+                                int x1, int y1, rgb_color_t c1,
+                                int x2, int y2, rgb_color_t c2) {
+    /* Sort vertices by Y ascending (y0 <= y1 <= y2) */
+    if (y0 > y1) { int tx = x0; x0 = x1; x1 = tx; int ty = y0; y0 = y1; y1 = ty; rgb_color_t tc = c0; c0 = c1; c1 = tc; }
+    if (y0 > y2) { int tx = x0; x0 = x2; x2 = tx; int ty = y0; y0 = y2; y2 = ty; rgb_color_t tc = c0; c0 = c2; c2 = tc; }
+    if (y1 > y2) { int tx = x1; x1 = x2; x2 = tx; int ty = y1; y1 = y2; y2 = ty; rgb_color_t tc = c1; c1 = c2; c2 = tc; }
+
+    int total_height = y2 - y0;
+    if (total_height == 0) return;
+
+    for (int i = 0; i <= total_height; i++) {
+        int second_half = i > (y1 - y0) || y1 == y0;
+        int segment_height = second_half ? (y2 - y1) : (y1 - y0);
+        if (segment_height == 0) continue;
+
+        int alpha = (i * 256) / total_height;
+        int beta  = ((i - (second_half ? (y1 - y0) : 0)) * 256) / segment_height;
+
+        int ax = x0 + (((x2 - x0) * alpha) >> 8);
+        int bx = second_half ? (x1 + (((x2 - x1) * beta) >> 8)) : (x0 + (((x1 - x0) * beta) >> 8));
+
+        rgb_color_t ca = interpolate_rgb(c0, c2, alpha);
+        rgb_color_t cb = second_half ? interpolate_rgb(c1, c2, beta) : interpolate_rgb(c0, c1, beta);
+
+        if (ax > bx) { int tx = ax; ax = bx; bx = tx; rgb_color_t tc = ca; ca = cb; cb = tc; }
+
+        int scanline_width = bx - ax;
+        for (int j = ax; j <= bx; j++) {
+            int factor = (scanline_width == 0) ? 0 : (((j - ax) * 256) / scanline_width);
+            rgb_color_t col = interpolate_rgb(ca, cb, factor);
+            rgb_set_pixel(fb, j, y0 + i, col);
+        }
     }
 }
 

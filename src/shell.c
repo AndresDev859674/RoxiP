@@ -27,7 +27,7 @@ static char* custom_strncpy(char* dest, const char* src, unsigned int n) {
     return dest;
 }
 
-static void save_history_to_vfs(void) {
+static void save_history_to_yafs(void) {
     static char blob[4096];
     blob[0] = '\0';
     int pos = 0;
@@ -51,7 +51,7 @@ static void add_to_history(const char* cmd) {
         for (int i = 0; i < MAX_CMD_HIST - 1; i++) strcpy(cmd_history[i], cmd_history[i + 1]);
         strcpy(cmd_history[MAX_CMD_HIST - 1], cmd);
     }
-    save_history_to_vfs();
+    save_history_to_yafs();
 }
 
 void init_env_vars(void) {
@@ -198,14 +198,14 @@ static void execute_lsblk(void) {
     hex_to_str((unsigned int)fb_pixels, hex_buf);
     strcpy(fb_line + 28, hex_buf); strcpy(fb_line + 38, "  614 KB      614400 B"); term_add_line(fb_line);
 
-    char vfs_line[80] = "vfs_0     31:0    vfs    RAM         ";
-    int total_vfs_bytes = 0;
-    for (int i = 0; i < fs_file_count; i++) if (fs_table[i].used) total_vfs_bytes += fs_table[i].size;
+    char yafs_line[80] = "yafs_0    31:0    yafs   RAM         ";
+    int total_yafs_bytes = 0;
+    for (int i = 0; i < fs_file_count; i++) if (fs_table[i].used) total_yafs_bytes += fs_table[i].size;
     int_to_str(fs_file_count * sizeof(file_record_t), num_buf);
-    strcpy(vfs_line + 40, num_buf); strcpy(vfs_line + 40 + strlen(num_buf), " B       ");
-    int_to_str(total_vfs_bytes, num_buf);
-    strcpy(vfs_line + 52, num_buf); strcpy(vfs_line + 52 + strlen(num_buf), " B (Data)");
-    term_add_line(vfs_line);
+    strcpy(yafs_line + 40, num_buf); strcpy(yafs_line + 40 + strlen(num_buf), " B       ");
+    int_to_str(total_yafs_bytes, num_buf);
+    strcpy(yafs_line + 52, num_buf); strcpy(yafs_line + 52 + strlen(num_buf), " B (Data)");
+    term_add_line(yafs_line);
 
     char flash_line[80] = "flash_nor0   31:1    flash  ";
     hex_to_str(STORAGE_FLASH_BASE, hex_buf);
@@ -237,14 +237,14 @@ void execute_stat(const char* filename) {
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
             char line[80], num_buf[16], hex_buf[12];
-            term_add_line("--- VFS File Stat Info ---");
+            term_add_line("--- YAFS File Stat Info ---");
             strcpy(line, "File Name  : "); strcpy(line + 13, fs_table[i].name); term_add_line(line);
             int_to_str(fs_table[i].size, num_buf);
             strcpy(line, "File Size  : "); strcpy(line + 13, num_buf); strcpy(line + 13 + strlen(num_buf), " Bytes"); term_add_line(line);
             hex_to_str((unsigned int)fs_table[i].content, hex_buf);
             strcpy(line, "RAM Addr   : "); strcpy(line + 13, hex_buf); term_add_line(line);
             strcpy(line, "Record Type: "); strcpy(line + 13, fs_table[i].is_dir ? "Directory" : "Regular File"); term_add_line(line);
-            strcpy(line, "Attributes : "); strcpy(line + 13, fs_table[i].is_vfat ? "VFAT / LFN" : "Standard VFS"); term_add_line(line);
+            strcpy(line, "Attributes : "); strcpy(line + 13, fs_table[i].is_vfat ? "VFAT / LFN" : "Standard YAFS"); term_add_line(line);
             return;
         }
     }
@@ -459,7 +459,7 @@ void execute_rsh_script(const char* filename) {
 
     const char* script_data = fs_read_file(filename);
     if (!script_data) {
-        term_add_line("rsh ERR [E_NOENT]: Script file not found in VFS.");
+        term_add_line("rsh ERR [E_NOENT]: Script file not found in YAFS.");
         return;
     }
 
@@ -515,7 +515,7 @@ void parse_and_execute(char* cmd_line) {
     execute_command(cmd_line);
 
     if (target_file[0] != '\0') {
-        term_add_line("shell: Output redirected to VFS file.");
+        term_add_line("shell: Output redirected to YAFS file.");
     }
 }
 
@@ -572,7 +572,7 @@ void execute_command(const char* cmd) {
     if (cmd[0] == '@') {
         const char* node_data = fs_read_file(cmd);
         if (node_data) term_add_line(node_data);
-        else term_add_line("VFS: Synthetic node not found");
+        else term_add_line("YAFS: Synthetic node not found");
     }
     else if (strcmp(cmd, "ps") == 0) execute_ps();
     else if (strcmp(cmd, "vfm") == 0) {
@@ -582,7 +582,7 @@ void execute_command(const char* cmd) {
     else if (strcmp(cmd, "floatcube") == 0 || strcmp(cmd, "3d") == 0) {
         current_mode = MODE_FLOATCUBE;
     }
-    else if (strcmp(cmd, "rgbdemo") == 0 || strcmp(cmd, "rgb") == 0) {
+    else if (strcmp(cmd, "colors") == 0 || strcmp(cmd, "rgb") == 0) {
         current_mode = MODE_RGBDEMO;
     }
     else if (strcmp(cmd, "comcow") == 0 || strcmp(cmd, "comcow info") == 0) {
@@ -741,13 +741,13 @@ void execute_command(const char* cmd) {
                     while (idx < 36) line[idx++] = ' ';
                 }
 
-                const char* fs_tag = fs_table[f].is_dir ? "DIR" : (fs_table[f].is_vfat ? "VFAT/FAT32" : "VFS");
+                const char* fs_tag = fs_table[f].is_dir ? "DIR" : (fs_table[f].is_vfat ? "VFAT/FAT32" : "YAFS");
                 while (*fs_tag) line[idx++] = *fs_tag++;
                 line[idx] = '\0';
                 term_add_line(line);
             }
         }
-        term_add_line("@cpu, @ram, @gpu, @fb0, @vfs         SYNTHETIC NODES");
+        term_add_line("@cpu, @ram, @gpu, @fb0, @yafs         SYNTHETIC NODES");
     }
     else if (strcmp(cmd, "cat") == 0) term_add_line("Usage: cat <filename|@node>");
     else if (strncmp(cmd, "cat ", 4) == 0) {
@@ -785,7 +785,9 @@ void execute_command(const char* cmd) {
         }
     }
     else if (strcmp(cmd, "help") == 0) {
-        term_add_line("desk, fetch, ps, sh, vfm, zcatcher, lsblk, comcow, ztop, floatcube, rgbdemo, mem, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, set, unset, env, clear, reboot, shutdown, panic");
+        term_add_line("desk, fetch, ps, sh, vfm, zcatcher, lsblk, comcow, ztop, mem, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, set, unset, env, clear, reboot, shutdown, panic");
+        term_add_line("");
+        term_add_line("Graphics : floatcube, colors");
     }
     else term_add_line("perf: command not found. Type 'help'");
 }
@@ -866,7 +868,8 @@ void process_char_input(char c) {
 
     if (current_mode == MODE_DESK && active_tab == 1) {
         if (c == '1') { current_theme = THEME_DEFAULT; redraw_current_view(); return; }
-        else if (c == '2') { current_theme = THEME_MAC_MONO; redraw_current_view(); return; }
+        else if (c == '2') { current_theme = THEME_BLUE; redraw_current_view(); return; }
+        else if (c == '3') { current_theme = THEME_MAC_MONO; redraw_current_view(); return; }
     }
 
     if (c == KEY_F1) {

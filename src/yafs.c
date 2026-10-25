@@ -1,10 +1,9 @@
 #include "kernel.h"
 
-file_record_t fs_table[MAX_VFS_FILES];
+file_record_t fs_table[MAX_YAFS_FILES];
 int fs_file_count = 0;
 static char synthetic_buf[2048];
 
-/* Minimal POSIX TAR Header Structure (512 bytes) */
 typedef struct {
     char name[100];
     char mode[8];
@@ -25,7 +24,6 @@ typedef struct {
     char pad[12];
 } tar_header_t;
 
-/* Parse Octal String to Integer */
 static unsigned int parse_octal(const char* str, int max_len) {
     unsigned int val = 0;
     for (int i = 0; i < max_len && str[i] >= '0' && str[i] <= '7'; i++) {
@@ -34,14 +32,12 @@ static unsigned int parse_octal(const char* str, int max_len) {
     return val;
 }
 
-/* Unpack Standard TAR stream from RAM into VFS */
 static int unpack_tar_stream(const unsigned char* tar_bytes, unsigned int total_len) {
     unsigned int offset = 0;
     int files_extracted = 0;
 
     while (offset + 512 <= total_len) {
         const tar_header_t* header = (const tar_header_t*)(tar_bytes + offset);
-
         if (header->name[0] == '\0') break;
 
         unsigned int file_size = parse_octal(header->size, 12);
@@ -62,15 +58,10 @@ static int unpack_tar_stream(const unsigned char* tar_bytes, unsigned int total_
     return files_extracted;
 }
 
-/* Minimal DEFLATE / Inflate Engine for GZIP */
-#define TINFL_LZ_DICT_SIZE 32768
-
 static int inflate_deflate_stream(const unsigned char* src, unsigned int src_len, unsigned char* dst, unsigned int dst_len) {
-    /* Fast LZ77 / Bitstream DEFLATE Decoder Fallback */
     unsigned int src_pos = 0;
     unsigned int dst_pos = 0;
 
-    /* Simple Store / Uncompressed / Bitstream Copy logic */
     while (src_pos < src_len && dst_pos < dst_len) {
         dst[dst_pos++] = src[src_pos++];
     }
@@ -97,19 +88,19 @@ int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len) {
     unsigned char flags = src[3];
     unsigned int gz_offset = 10;
 
-    if (flags & 4) { /* FEXTRA */
+    if (flags & 4) {
         unsigned int extra_len = src[gz_offset] | (src[gz_offset + 1] << 8);
         gz_offset += 2 + extra_len;
     }
-    if (flags & 8) { /* FNAME */
+    if (flags & 8) {
         while (gz_offset < src_len && src[gz_offset] != 0) gz_offset++;
         gz_offset++;
     }
-    if (flags & 16) { /* FCOMMENT */
+    if (flags & 16) {
         while (gz_offset < src_len && src[gz_offset] != 0) gz_offset++;
         gz_offset++;
     }
-    if (flags & 2) { /* FHCRC */
+    if (flags & 2) {
         gz_offset += 2;
     }
 
@@ -118,12 +109,11 @@ int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len) {
         return -3;
     }
 
-    /* Uncompressed size from GZIP trailer (last 4 bytes) */
     unsigned int uncompressed_len = src[src_len - 4] | (src[src_len - 3] << 8) | 
                                     (src[src_len - 2] << 16) | (src[src_len - 1] << 24);
 
     if (uncompressed_len == 0 || uncompressed_len > (1024 * 1024)) {
-        uncompressed_len = 256 * 1024; /* Fallback limit 256 KB */
+        uncompressed_len = 256 * 1024;
     }
 
     unsigned char* uncompressed_tar = (unsigned char*)malloc(uncompressed_len);
@@ -132,7 +122,6 @@ int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len) {
         return -4;
     }
 
-    /* Decompress DEFLATE stream into uncompressed_tar buffer */
     unsigned int payload_size = src_len - gz_offset - 8;
     inflate_deflate_stream(src + gz_offset, payload_size, uncompressed_tar, uncompressed_len);
 
@@ -160,7 +149,7 @@ void execute_tar(const char* args) {
     }
 
     if (!rec) {
-        term_add_line("tar ERR [E_NOENT]: Target file not found in VFS table.");
+        term_add_line("tar ERR [E_NOENT]: Target file not found in YAFS table.");
         return;
     }
 
@@ -219,7 +208,7 @@ void vfs_sync_to_storage(void) {
 
     unsigned char* fs_ptr = (unsigned char*)fs_table;
     unsigned int table_offset = sizeof(unsigned int) + sizeof(int);
-    unsigned int table_size = sizeof(file_record_t) * MAX_VFS_FILES;
+    unsigned int table_size = sizeof(file_record_t) * MAX_YAFS_FILES;
 
     for (unsigned int i = 0; i < table_size; i++) {
         if (flash[table_offset + i] != fs_ptr[i]) pflash_write_byte(table_offset + i, fs_ptr[i]);
@@ -231,13 +220,13 @@ int vfs_load_from_storage(void) {
     if (flash->magic != STORAGE_MAGIC) return 0;
 
     fs_file_count = flash->file_count;
-    for (int i = 0; i < MAX_VFS_FILES; i++) fs_table[i] = flash->files[i];
+    for (int i = 0; i < MAX_YAFS_FILES; i++) fs_table[i] = flash->files[i];
     return 1;
 }
 
 void init_filesystems(void) {
     if (vfs_load_from_storage()) {
-        log_boot_event("[OK] Persistent VFS mounted from roxip.storage");
+        log_boot_event("[OK] Persistent YAFS mounted from roxip.storage");
         return;
     }
 
@@ -261,7 +250,7 @@ void init_filesystems(void) {
     fs_table[2].used = 1; fs_table[2].is_vfat = 0; fs_table[2].is_dir = 0;
     fs_file_count++;
 
-    log_boot_event("[OK] Persistent Flash formatted (ROXIPFS1)");
+    log_boot_event("[OK] Persistent Flash formatted (YAFS1)");
     vfs_sync_to_storage();
 }
 
@@ -295,10 +284,10 @@ const char* fs_read_file(const char* filename) {
             strcpy(synthetic_buf + strlen(synthetic_buf), hex);
             strcpy(synthetic_buf + strlen(synthetic_buf), "\nRes: 320x200 / 80x25\nSize: 614400 Bytes");
             return synthetic_buf;
-        } else if (strcmp(filename, "@vfs") == 0) {
+        } else if (strcmp(filename, "@yafs") == 0 || strcmp(filename, "@vfs") == 0) {
             char num[16];
             int_to_str(fs_file_count, num);
-            strcpy(synthetic_buf, "Type: RoxiP Synthetic/PFlash VFS\nFile Count: ");
+            strcpy(synthetic_buf, "Type: RoxiP Synthetic/PFlash YAFS (Yet Another File System)\nFile Count: ");
             strcpy(synthetic_buf + strlen(synthetic_buf), num);
             strcpy(synthetic_buf + strlen(synthetic_buf), "\nMax Payload: 2 MB");
             return synthetic_buf;
@@ -318,14 +307,14 @@ const char* fs_read_file(const char* filename) {
 
 int fs_write_file_binary(const char* filename, const char* content, unsigned int size) {
     if (size >= MAX_FILE_CONTENT) {
-        term_add_line("VFS ERR [E_OVERFLOW]: Size exceeds 2MB limit.");
+        term_add_line("YAFS ERR [E_OVERFLOW]: Size exceeds 2MB limit.");
         size = MAX_FILE_CONTENT - 1;
     }
 
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
             if (fs_table[i].is_dir) {
-                term_add_line("VFS ERR [E_ISDIR]: Target path is a directory.");
+                term_add_line("YAFS ERR [E_ISDIR]: Target path is a directory.");
                 return 0;
             }
             memcpy(fs_table[i].content, content, size);
@@ -336,7 +325,7 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
         }
     }
 
-    if (fs_file_count < MAX_VFS_FILES) {
+    if (fs_file_count < MAX_YAFS_FILES) {
         int idx = fs_file_count;
         strcpy(fs_table[idx].name, filename);
         memcpy(fs_table[idx].content, content, size);
@@ -350,7 +339,7 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
         return 1;
     }
 
-    term_add_line("VFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
+    term_add_line("YAFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
     return 0;
 }
 
@@ -361,11 +350,11 @@ int fs_write_file(const char* filename, const char* content) {
 int fs_mkdir(const char* dirname) {
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used && strcmp(fs_table[i].name, dirname) == 0) {
-            term_add_line("VFS ERR [E_EXIST]: Directory or file already exists.");
+            term_add_line("YAFS ERR [E_EXIST]: Directory or file already exists.");
             return 0;
         }
     }
-    if (fs_file_count < MAX_VFS_FILES) {
+    if (fs_file_count < MAX_YAFS_FILES) {
         int idx = fs_file_count;
         strcpy(fs_table[idx].name, dirname);
         fs_table[idx].content[0] = '\0';
@@ -377,6 +366,6 @@ int fs_mkdir(const char* dirname) {
         vfs_sync_to_storage();
         return 1;
     }
-    term_add_line("VFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
+    term_add_line("YAFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
     return 0;
 }

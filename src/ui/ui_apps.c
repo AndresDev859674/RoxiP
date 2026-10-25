@@ -61,7 +61,7 @@ void render_ztop_frame(void) {
         { 2, "root", 1, 64,  "RUNNING", "comcow_wm" },
         { 3, "user", 2, 32,  "RUNNING", "perf_shell" },
         { 4, "root", 1, 16,  "RUNNING", "pl011_serial" },
-        { 5, "root", 0, 48,  "SLEEP",   "vfs_engine" },
+        { 5, "root", 0, 48,  "SLEEP",   "yafs_engine" },
         { 6, "root", 0, 32,  "RUNNING", "arm_audio" }
     };
 
@@ -112,9 +112,9 @@ static void mini_snprintf_vfm(char* buf, const char* name, int size) {
 void render_vfm(int selected_index) {
     vga_clear(make_color(COLOR_WHITE, COLOR_BLACK));
 
-    vga_draw_string(" RoxiP File Manager v0.1 (vfm) - VFS Explorer ", make_color(COLOR_BLACK, COLOR_CYAN), 0, 0);
+    vga_draw_string(" RoxiP File Manager v0.1 (vfm) - YAFS Explorer ", make_color(COLOR_BLACK, COLOR_CYAN), 0, 0);
 
-    vga_draw_string("+--- VFS Storage (pflash) ---+", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 2, 2);
+    vga_draw_string("+--- YAFS Storage (pflash) ---+", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 2, 2);
     int active_files = 0;
     for (int i = 0; i < fs_file_count; i++) {
         if (fs_table[i].used) {
@@ -134,7 +134,7 @@ void render_vfm(int selected_index) {
     vga_draw_string(" @ram   (Heap Memory Usage)", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 5);
     vga_draw_string(" @gpu   (comcow Compositor)", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 6);
     vga_draw_string(" @fb0   (Framebuffer Base) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 7);
-    vga_draw_string(" @vfs   (Storage Metadata) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 8);
+    vga_draw_string(" @yafs   (Storage Metadata) ", make_color(COLOR_DARK_GREY, COLOR_BLACK), 43, 8);
 
     vga_draw_string(" [UP/DOWN] Select  [ENTER] View (cat)  [ESC/Q] Exit back to perf ", make_color(COLOR_BLACK, COLOR_LIGHT_GREY), 0, 24);
     vga_flush();

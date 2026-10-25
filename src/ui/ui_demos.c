@@ -38,7 +38,7 @@ void render_floatcube_frame(void) {
     angle_x = (angle_x + 1) % 36; angle_y = (angle_y + 2) % 36; angle_z = (angle_z + 1) % 36;
 
     vga_clear(make_color(COLOR_BLACK, COLOR_BLACK));
-    vga_draw_string("=== RoxiP 3D Software Pipeline (ARM Fixed-Point) ===", make_color(COLOR_YELLOW, COLOR_BLACK), 14, 1);
+    vga_draw_string("=== Floating Cube ===", make_color(COLOR_YELLOW, COLOR_BLACK), 31, 1);
     vga_draw_string("Press [ESC] or [Q] to return to perf Terminal", make_color(COLOR_DARK_GREY, COLOR_BLACK), 18, 2);
 
     int verts[8][3] = {
@@ -84,14 +84,13 @@ void render_floatcube_frame(void) {
     }
 
     vga_draw_string("Stats:", make_color(COLOR_WHITE, COLOR_BLACK), 2, 21);
-    vga_draw_string("Engine: ARM32 Fixed-Point 3D Pipeline (3-Axis)", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 2, 22);
-    vga_draw_string("Status: Triple-Fault Guard Active", make_color(COLOR_LIGHT_GREEN, COLOR_BLACK), 2, 23);
+    vga_draw_string("Engine: 3-Axis 3D Cube", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 2, 22);
+    vga_draw_string("This its not a real 3D graphics", make_color(COLOR_LIGHT_CYAN, COLOR_BLACK), 2, 23);
     vga_flush();
 }
 
 void render_rgbdemo(void) {
     vga_clear(make_color(COLOR_BLACK, COLOR_BLACK));
-    vga_draw_string("=== RoxiP Framebuffer RGB Color Test ===", make_color(COLOR_WHITE, COLOR_BLACK), 20, 2);
 
     unsigned char colors[8] = {
         COLOR_RED, COLOR_GREEN, COLOR_BLUE, COLOR_CYAN,
@@ -100,9 +99,11 @@ void render_rgbdemo(void) {
 
     for (int i = 0; i < 8; i++) {
         int start_x = 5 + (i * 9);
+        unsigned char solid_color = make_color(colors[i], colors[i]);
+
         for (int y = 6; y < 18; y++) {
             for (int x = start_x; x < start_x + 8; x++) {
-                vga_draw_char_at('#', make_color(colors[i], COLOR_BLACK), x, y);
+                vga_draw_char_at((char)219, solid_color, x, y);
             }
         }
     }

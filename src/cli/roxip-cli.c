@@ -8,7 +8,7 @@
 
 #define MAX_FILENAME_LEN 64
 #define MAX_FILE_CONTENT 2097152
-#define MAX_VFS_FILES    16
+#define MAX_YAFS_FILES    16
 #define STORAGE_MAGIC    0x53465053
 
 typedef struct {
@@ -23,18 +23,20 @@ typedef struct {
 typedef struct {
     unsigned int magic;
     int file_count;
-    file_record_t files[MAX_VFS_FILES];
+    file_record_t files[MAX_YAFS_FILES];
 } storage_header_t;
 
 static void print_usage(const char* prog_name) {
     printf("RoxiP Tools v0.1\n");
+    printf("its a tool for the yafs file system\n");
+    printf("\n");
     printf("Usage:\n");
     printf("  %s create <storage_path> <size_mb>\n", prog_name);
     printf("  %s list   <storage_path>\n", prog_name);
-    printf("  %s read   <storage_path> <vfs_name> [host_out_path]\n", prog_name);
-    printf("  %s write  <storage_path> <vfs_name> <text_or_host_path> [-f|--file]\n", prog_name);
+    printf("  %s read   <storage_path> <yafs_name> [host_out_path]\n", prog_name);
+    printf("  %s write  <storage_path> <yafs_name> <text_or_host_path> [-f|--file]\n", prog_name);
     printf("  %s mkdir  <storage_path> <dirname>\n", prog_name);
-    printf("  %s rm     <storage_path> <vfs_name_or_dir>\n", prog_name);
+    printf("  %s rm     <storage_path> <yafs_name_or_dir>\n", prog_name);
 }
 
 static int load_header(const char* path, storage_header_t* header, FILE** out_fp) {
@@ -131,7 +133,7 @@ static int cmd_create(const char* path, int size_mb) {
 
     free(header);
     fclose(fp);
-    printf("Successfully created formatted image '%s' (%d MB) with default VFS layout\n", path, size_mb);
+    printf("Successfully created formatted image '%s' (%d MB) with default YAFS layout\n", path, size_mb);
     return 0;
 }
 
@@ -144,18 +146,18 @@ static int cmd_list(const char* path) {
         return 1;
     }
 
-    printf("Image: %s | Magic: 0x%08X | File Count: %d/%d\n", path, header->magic, header->file_count, MAX_VFS_FILES);
+    printf("Image: %s | Magic: 0x%08X | File Count: %d/%d\n", path, header->magic, header->file_count, MAX_YAFS_FILES);
     printf("-------------------------------------------------------------------\n");
     printf("NAME                            SIZE        TYPE        ATTRIBUTES\n");
     printf("-------------------------------------------------------------------\n");
 
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
         if (header->files[i].used) {
             printf("%-30s  %-10d  %-10s  %s\n",
                    header->files[i].name,
                    header->files[i].size,
                    header->files[i].is_dir ? "<DIR>" : "FILE",
-                   header->files[i].is_vfat ? "VFAT" : "VFS");
+                   header->files[i].is_vfat ? "VFAT" : "YAFS");
         }
     }
     free(header);
@@ -171,7 +173,7 @@ static int cmd_read(const char* path, const char* filename, const char* host_out
         return 1;
     }
 
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
         if (header->files[i].used && strcmp(header->files[i].name, filename) == 0) {
             if (header->files[i].is_dir) {
                 fprintf(stderr, "Error: '%s' is a directory.\n", filename);
@@ -205,7 +207,7 @@ static int cmd_read(const char* path, const char* filename, const char* host_out
     return 1;
 }
 
-static int cmd_write(const char* path, const char* vfs_name, const char* input_arg, int is_file_flag) {
+static int cmd_write(const char* path, const char* yafs_name, const char* input_arg, int is_file_flag) {
     char* file_payload = (char*)calloc(1, MAX_FILE_CONTENT);
     if (!file_payload) return 1;
 
@@ -226,7 +228,7 @@ static int cmd_write(const char* path, const char* vfs_name, const char* input_a
         fclose(host_file);
 
         if (total_file_size > MAX_FILE_CONTENT) {
-            printf("[Warning] Host file size (%ld bytes) exceeds VFS payload limit (%d bytes). Truncated!\n",
+            printf("[Warning] Host file size (%ld bytes) exceeds YAFS payload limit (%d bytes). Truncated!\n",
                    total_file_size, MAX_FILE_CONTENT);
         }
     } else {
@@ -403,7 +405,7 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(cmd, "read") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s read <storage_path> <vfs_name> [host_out_path]\n", argv[0]);
+            fprintf(stderr, "Usage: %s read <storage_path> <yafs_name> [host_out_path]\n", argv[0]);
             return 1;
         }
         const char* host_out = (argc >= 5) ? argv[4] : NULL;
@@ -411,7 +413,7 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(cmd, "write") == 0) {
         if (argc < 5) {
-            fprintf(stderr, "Usage: %s write <storage_path> <vfs_name> <text_or_host_path> [-f|--file]\n", argv[0]);
+            fprintf(stderr, "Usage: %s write <storage_path> <yafs_name> <text_or_host_path> [-f|--file]\n", argv[0]);
             return 1;
         }
 
@@ -448,7 +450,7 @@ int main(int argc, char* argv[]) {
     }
     else if (strcmp(cmd, "rm") == 0 || strcmp(cmd, "delete") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s rm <storage_path> <vfs_name_or_dir>\n", argv[0]);
+            fprintf(stderr, "Usage: %s rm <storage_path> <yafs_name_or_dir>\n", argv[0]);
             return 1;
         }
         return cmd_rm(path, argv[3]);

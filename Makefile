@@ -24,7 +24,7 @@ UI_OBJS = src/ui/ui_core.o \
 OBJS = startup.o \
        src/memory.o \
        src/drivers.o \
-       src/vfs.o \
+       src/yafs.o \
        src/graphics.o \
        src/shell.o \
        src/kernel.o \
@@ -97,7 +97,7 @@ run qemu: roxip.bin
 		if [ -f ./roxip-cli ]; then \
 			./roxip-cli create roxip.storage 64; \
 		else \
-			echo "[VFS] Creating 64MB raw storage image for QEMU..."; \
+			echo "[YAFS] Creating 64MB raw storage image for QEMU..."; \
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
 	fi

@@ -57,7 +57,7 @@
 #define TERM_ROWS 18
 #define TERM_COLS 74
 #define MAX_BOOT_LOGS 12
-#define MAX_VFS_FILES 16
+#define MAX_YAFS_FILES 16
 #define MAX_FILENAME_LEN 64
 #define MAX_FILE_CONTENT 2097152
 #define MAX_ENV_VARS     16
@@ -93,8 +93,9 @@ typedef enum {
 } system_mode_t;
 
 typedef enum {
-    THEME_DEFAULT = 0,
-    THEME_MAC_MONO = 1
+    THEME_DEFAULT = 0,   /* Industrial Grey (Default) */
+    THEME_BLUE = 1,      /* Classic Blue */
+    THEME_MAC_MONO = 2   /* Monochrome */
 } desk_theme_t;
 
 typedef struct {
@@ -152,7 +153,7 @@ typedef struct {
 typedef struct {
     unsigned int magic;
     int file_count;
-    file_record_t files[MAX_VFS_FILES];
+    file_record_t files[MAX_YAFS_FILES];
 } storage_header_t;
 
 extern char __bss_end[];
@@ -197,7 +198,7 @@ extern int mouse_y;
 extern char term_lines[TERM_ROWS][TERM_COLS];
 extern int term_row_count;
 
-extern file_record_t fs_table[MAX_VFS_FILES];
+extern file_record_t fs_table[MAX_YAFS_FILES];
 extern int fs_file_count;
 extern int dbg_line;
 
@@ -246,10 +247,10 @@ void delay_cycles(volatile unsigned int count);
 void system_shutdown(void);
 void system_reboot(void);
 
-/* VFS Prototypes */
+/* YAFS Prototypes */
 const char* fs_read_file(const char* filename);
-void vfs_sync_to_storage(void);
-int vfs_load_from_storage(void);
+void YAFS_sync_to_storage(void);
+int YAFS_load_from_storage(void);
 void init_filesystems(void);
 int fs_write_file(const char* filename, const char* content);
 int fs_write_file_binary(const char* filename, const char* content, unsigned int size);

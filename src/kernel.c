@@ -48,7 +48,7 @@ void dbg_log(const char* msg) {
     if (dbg_line >= 25) dbg_line = 0;
 }
 
-static void run_arm_bootloader(void) {
+static void run_bootloader(void) {
     int seconds_remaining = 10;
     int selected_option = 0;
 
@@ -73,7 +73,7 @@ static void run_arm_bootloader(void) {
         vga_draw_string(" \\  / ", logo_color, 37, 6);
         vga_draw_string("  \\/  ", logo_color, 37, 7);
 
-        vga_draw_string("=== RoxiP Bootloader v0.1 (Core) ===", title_color, 20, 9);
+        vga_draw_string("=== RoxiP Bootloader v0.1 (Core) ===", title_color, 22, 9);
 
         unsigned char opt1_color = (selected_option == 0) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
         unsigned char opt2_color = (selected_option == 1) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
@@ -147,7 +147,7 @@ void kmain(void) {
     init_kmi_mouse();
 
     dbg_log("[12/12] Launching Interactive Bootloader...");
-    run_arm_bootloader();
+    run_bootloader();
 
     dbg_log("Launching CLI Shell View...");
     redraw_current_view();
