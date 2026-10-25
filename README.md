@@ -20,7 +20,7 @@ Yes, a storage file—instead of traditional partitions, the system uses a singl
 
 This approach ensures portability, allowing you to allocate a specific amount of storage (in MB or GB).
 
-The system is built on a VFS (Virtual File System)—a lightweight, custom-designed file system tailored specifically for this storage file. The goal is for it to run on various hardware, including Chinese-manufactured devices, Raspberry Pi, and other ARM-based platforms.
+The system is built on a VFS—a lightweight, custom-designed file system tailored specifically for this storage file. The goal is for it to run on various hardware, including Chinese-manufactured devices, Raspberry Pi, and other ARM-based platforms.
    
 ## Contrib
 <table>
