@@ -1,0 +1,22 @@
+# meson_options.txt - RoxiP Meson options
+#
+# Usage examples:
+#   meson setup builddir --cross-file cross-arm-none-eabi.txt -Dboard=versatilepb
+#   meson setup builddir --cross-file cross-arm-none-eabi.txt -Dboard=rockchip -Ddebug=true
+
+option('board', type: 'combo',
+  choices: ['versatilepb', 'rockchip', 'amlogic'],
+  value: 'versatilepb',
+  description: 'Target board / SoC')
+
+option('roxip-debug', type: 'boolean',
+  value: false,
+  description: 'Debug build (no optimization, with debug symbols)')
+
+option('build-cli', type: 'boolean',
+  value: false,
+  description: 'Build host CLI tool (roxip-cli)')
+
+option('gdb-port', type: 'integer',
+  value: 7777,
+  description: 'GDB server port for debug target')

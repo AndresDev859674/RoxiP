@@ -1,12 +1,11 @@
 #include "kernel.h"
 #include "drivers.h"
+#include "firmware.h"
 
-static int ps2_release_flag = 0;
-static int ps2_extended_flag = 0;
-static int shift_pressed = 0;
-static int caps_lock_active = 0;
-static int alt_pressed = 0;
-
+#ifdef KMI0_BASE
+/* ----------------------------------------------------------------------
+ * PS/2 scan-code tables (KMI protocol, VersatilePB only)
+ * ---------------------------------------------------------------------- */
 static const char ps2_set2_ascii[128] = {
     [0x1C] = 'a', [0x32] = 'b', [0x21] = 'c', [0x23] = 'd', [0x24] = 'e',
     [0x2B] = 'f', [0x34] = 'g', [0x33] = 'h', [0x43] = 'i', [0x3B] = 'j',
@@ -34,6 +33,12 @@ static const char ps2_set2_shifted[128] = {
     [0x5D] = '|', [0x4C] = ':', [0x52] = '"', [0x0E] = '~', [0x41] = '<',
     [0x49] = '>', [0x4A] = '?'
 };
+
+static int ps2_release_flag = 0;
+static int ps2_extended_flag = 0;
+static int shift_pressed = 0;
+static int caps_lock_active = 0;
+static int alt_pressed = 0;
 
 void init_kmi_mouse(void) {
     KMI1_CR = 0x14;
@@ -84,11 +89,21 @@ void poll_kmi_mouse(void) {
 }
 
 void init_kmi_keyboard(void) { KMI0_CR = 0x14; }
+#else /* !KMI0_BASE */
+/* Stubs for boards without a KMI controller (Rockchip, Amlogic, etc.) */
+void init_kmi_mouse(void)    { (void)0; }
+void poll_kmi_mouse(void)    { (void)0; }
+void init_kmi_keyboard(void) { (void)0; }
+#endif /* KMI0_BASE */
 
+/* ----------------------------------------------------------------------
+ * Keyboard input: UART first (works on every board), then KMI (if present)
+ * ---------------------------------------------------------------------- */
 char get_keyboard_input(void) {
     char c = uart_getc_nonblocking();
     if (c) return c;
 
+#ifdef KMI0_BASE
     if (KMI0_STAT & (1 << 4)) {
         unsigned char scancode = KMI0_DATA;
         if (scancode == 0xE0) { ps2_extended_flag = 1; return 0; }
@@ -128,5 +143,7 @@ char get_keyboard_input(void) {
 
         return base_char;
     }
+#endif /* KMI0_BASE */
+
     return 0;
 }

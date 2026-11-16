@@ -1,0 +1,26 @@
+# cross-arm-none-eabi.txt
+# Cross-compilation file for RoxiP bare-metal ARM targets.
+#
+# Usage:
+#   meson setup builddir --cross-file cross-arm-none-eabi.txt -Dboard=versatilepb
+#   meson compile -C builddir
+
+[binaries]
+c = '/usr/bin/arm-none-eabi-gcc'
+ar = '/usr/bin/arm-none-eabi-ar'
+as = '/usr/bin/arm-none-eabi-as'
+objcopy = '/usr/bin/arm-none-eabi-objcopy'
+strip = '/usr/bin/arm-none-eabi-strip'
+nm = '/usr/bin/arm-none-eabi-nm'
+readelf = '/usr/bin/arm-none-eabi-readelf'
+
+# Python 3 for meson itself
+python3 = '/usr/bin/python3'
+
+[host_machine]
+system = 'baremetal'
+cpu_family = 'arm'
+cpu = 'arm'
+endian = 'little'
+
+[properties]

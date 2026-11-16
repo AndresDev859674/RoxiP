@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "firmware.h"
 
 unsigned short fb_pixels[FB_WIDTH * FB_HEIGHT] __attribute__((aligned(16)));
 unsigned short vga_virtual_buffer[VGA_WIDTH * VGA_HEIGHT];
@@ -165,7 +166,9 @@ void vga_flush(void) {
             }
         }
     }
+#ifdef PL110_LCDCONTROL
     PL110_LCDCONTROL = 0x192D;
+#endif
 }
 
 void vga_clear(unsigned char color) {

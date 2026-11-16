@@ -4,19 +4,25 @@ AS = arm-none-eabi-as
 OBJCOPY = arm-none-eabi-objcopy
 
 ROCKCHIP ?= 0
+AMLOGIC ?= 0
 BOARD ?= versatilepb
 DEBUG ?= 0
 BUILD_CLI ?= 0
 GDB_PORT ?= 7777
 
-# Force Rockchip board when ROCKCHIP=1 flag is passed
+# Force board when corresponding flag is passed
 ifeq ($(ROCKCHIP),1)
     BOARD = rockchip
+endif
+ifeq ($(AMLOGIC),1)
+    BOARD = amlogic
 endif
 
 # Select CPU target architecture based on active board
 ifeq ($(BOARD),rockchip)
     ARCH_CPU ?= cortex-a7
+else ifeq ($(BOARD),amlogic)
+    ARCH_CPU ?= cortex-a53
 else
     ARCH_CPU ?= arm926ej-s
 endif
@@ -66,6 +72,10 @@ all: $(TARGETS)
 # Target shortcut to build for Rockchip platform
 rockchip:
 	@$(MAKE) ROCKCHIP=1 all
+
+# Target shortcut to build for Amlogic Meson platform
+amlogic:
+	@$(MAKE) AMLOGIC=1 all
 
 # Target for raw binary only
 bin: roxip.bin

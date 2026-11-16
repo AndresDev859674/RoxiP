@@ -16,3 +16,5 @@ roxip-cli
 
 *.tar
 
+build/
+builddir/

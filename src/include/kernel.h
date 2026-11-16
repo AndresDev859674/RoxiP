@@ -8,30 +8,12 @@
 #define VGA_WIDTH  80
 #define VGA_HEIGHT 25
 
-/* MMIO Addresses */
-#define UART0_BASE 0x101f1000
-#define UART0_DR   (*((volatile unsigned int*)(UART0_BASE + 0x00)))
-#define UART0_FR   (*((volatile unsigned int*)(UART0_BASE + 0x18)))
-
-#define KMI1_BASE 0x10007000
-#define KMI1_CR   (*((volatile unsigned char*)(KMI1_BASE + 0x00)))
-#define KMI1_STAT (*((volatile unsigned char*)(KMI1_BASE + 0x04)))
-#define KMI1_DATA (*((volatile unsigned char*)(KMI1_BASE + 0x08)))
-
-#define SYS_CLCD  (*((volatile unsigned int*)(0x1000001C)))
-
-#define KMI0_BASE 0x10006000
-#define KMI0_CR   (*((volatile unsigned char*)(KMI0_BASE + 0x00)))
-#define KMI0_STAT (*((volatile unsigned char*)(KMI0_BASE + 0x04)))
-#define KMI0_DATA (*((volatile unsigned char*)(KMI0_BASE + 0x08)))
-
-#define PL110_LCDTIM0    (*((volatile unsigned int*)(0x10120000)))
-#define PL110_LCDTIM1    (*((volatile unsigned int*)(0x10120004)))
-#define PL110_LCDTIM2    (*((volatile unsigned int*)(0x10120008)))
-#define PL110_LCDTIM3    (*((volatile unsigned int*)(0x1012000C)))
-#define PL110_LCDUPBASE  (*((volatile unsigned int*)(0x10120010)))
-#define PL110_LCDLPBASE  (*((volatile unsigned int*)(0x10120014)))
-#define PL110_LCDCONTROL (*((volatile unsigned int*)(0x10120018)))
+/*
+ * Board-specific MMIO addresses (UART, KMI, PL110/LCD, timers, reset, etc.)
+ * live in firmware/<BOARD>/firmware.h and are made available via the
+ * -Ifirmware/$(BOARD) include path.  kernel.h intentionally does NOT hardcode
+ * any SoC addresses so that the same sources compile for every board.
+ */
 
 #define FB_WIDTH  640
 #define FB_HEIGHT 480

@@ -11,6 +11,12 @@ static inline void mmio_write32(unsigned int addr, unsigned int val) {
     asm volatile("str %0, [%1]" : : "r"(val), "r"(addr) : "memory");
 }
 
+static inline unsigned int mmio_read32(unsigned int addr) {
+    unsigned int val;
+    asm volatile("ldr %0, [%1]" : "=r"(val) : "r"(addr) : "memory");
+    return val;
+}
+
 void kernel_panic(const char* message) {
     vga_clear(make_color(COLOR_WHITE, COLOR_RED));
     vga_draw_string("================================================================================", make_color(COLOR_YELLOW, COLOR_RED), 0, 1);

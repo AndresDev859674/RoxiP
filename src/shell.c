@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "firmware.h"
 
 char cmd_history[MAX_CMD_HIST][128];
 int hist_count = 0;
@@ -170,8 +171,10 @@ static void execute_zcatcher(void) {
     hex_to_str((unsigned int)fb_pixels, hex_buf);
     char fb_line[80] = "[PL110 FB BASE]   : "; strcpy(fb_line + 20, hex_buf); term_add_line(fb_line);
 
+#ifdef PL110_LCDCONTROL
     hex_to_str(PL110_LCDCONTROL, hex_buf);
     char lcd_line[80] = "[PL110 CTRL REG]  : "; strcpy(lcd_line + 20, hex_buf); term_add_line(lcd_line);
+#endif
 
     int_to_str(get_used_heap_bytes(), num_buf);
     char mem_line[80] = "[HEAP RAM USED]   : "; strcpy(mem_line + 20, num_buf);
