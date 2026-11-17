@@ -888,7 +888,7 @@ void process_char_input(char c) {
     if (current_mode == MODE_DESK && active_tab == 1) {
         if (c == '1') { current_theme = THEME_DEFAULT; redraw_current_view(); return; }
         else if (c == '2') { current_theme = THEME_BLUE; redraw_current_view(); return; }
-        else if (c == '3') { current_theme = THEME_MAC_MONO; redraw_current_view(); return; }
+        else if (c == '3') { current_theme = THEME_MONOCHROME; redraw_current_view(); return; }
     }
 
     if (c == KEY_F1) {

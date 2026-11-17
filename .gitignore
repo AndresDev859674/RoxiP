@@ -21,3 +21,5 @@ build-test/
 builddir/
 builddir-riscv/
 builddir-test/
+builddir-rk/
+builddir-am/

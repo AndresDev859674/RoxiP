@@ -52,7 +52,7 @@ void term_clear_history(void) {
 }
 
 void draw_top_header(void) {
-    unsigned char bar_top = (current_theme == THEME_MAC_MONO) ? (COLOR_WHITE | (COLOR_BLACK << 4)) : (COLOR_BLACK | (COLOR_LIGHT_GREY << 4));
+    unsigned char bar_top = (current_theme == THEME_MONOCHROME) ? (COLOR_WHITE | (COLOR_BLACK << 4)) : (COLOR_BLACK | (COLOR_LIGHT_GREY << 4));
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bar_top, x, 0);
     vga_draw_string(" RoxiP Core (comcow)", bar_top, 0, 0);
     const char anim_chars[] = {'|', '/', '-', '\\'};
@@ -60,7 +60,7 @@ void draw_top_header(void) {
     bios_anim_frame++;
     vga_draw_string("Hub", bar_top, 68, 0);
     vga_draw_char_at('[', bar_top, 74, 0);
-    vga_draw_char_at(current_anim, (current_theme == THEME_MAC_MONO) ? (COLOR_BLACK | (COLOR_WHITE << 4)) : (COLOR_LIGHT_RED | (COLOR_LIGHT_GREY << 4)), 75, 0);
+    vga_draw_char_at(current_anim, (current_theme == THEME_MONOCHROME) ? (COLOR_BLACK | (COLOR_WHITE << 4)) : (COLOR_LIGHT_RED | (COLOR_LIGHT_GREY << 4)), 75, 0);
     vga_draw_char_at(']', bar_top, 76, 0);
 }
 

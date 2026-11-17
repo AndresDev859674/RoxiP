@@ -37,7 +37,7 @@ Three themes defined in `include/kernel.h`:
 |-------|-------------|
 | `THEME_DEFAULT` | Industrial Grey (black text on dark grey) |
 | `THEME_BLUE` | Classic Blue (black text on blue) |
-| `THEME_MAC_MONO` | Monochrome (classic Mac OS dither pattern) |
+| `THEME_MONOCHROME` | Monochrome (classic Mac OS dither pattern) |
 
 Theme switching is done via the desktop Settings tab or keyboard input.
 

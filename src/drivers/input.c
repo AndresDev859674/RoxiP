@@ -80,7 +80,7 @@ void poll_kmi_mouse(void) {
                     else if (mouse_y == 1 && mouse_x >= 10 && mouse_x <= 19) { active_tab = 1; render_desktop(); }
                     else if (mouse_y == 1 && mouse_x >= 22 && mouse_x <= 27) { active_tab = 2; current_mode = MODE_PERF_CLI; redraw_current_view(); }
                     else if (active_tab == 1 && mouse_y == 7 && mouse_x >= 4 && mouse_x <= 30) { current_theme = THEME_DEFAULT; render_desktop(); }
-                    else if (active_tab == 1 && mouse_y == 9 && mouse_x >= 4 && mouse_x <= 30) { current_theme = THEME_MAC_MONO; render_desktop(); }
+                    else if (active_tab == 1 && mouse_y == 9 && mouse_x >= 4 && mouse_x <= 30) { current_theme = THEME_MONOCHROME; render_desktop(); }
                 }
             }
         }

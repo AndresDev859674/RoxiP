@@ -272,7 +272,7 @@ static inline unsigned char make_color(unsigned char fg, unsigned char bg) {
 
 void draw_mouse_cursor(void) {
     if (mouse_x >= 0 && mouse_x < VGA_WIDTH && mouse_y >= 0 && mouse_y < VGA_HEIGHT) {
-        unsigned char c = (current_theme == THEME_MAC_MONO) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
+        unsigned char c = (current_theme == THEME_MONOCHROME) ? make_color(COLOR_BLACK, COLOR_WHITE) : make_color(COLOR_WHITE, COLOR_BLACK);
         vga_draw_char_at('X', c, mouse_x, mouse_y);
     }
 }

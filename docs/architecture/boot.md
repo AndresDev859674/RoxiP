@@ -78,4 +78,4 @@ Defined as `desk_theme_t`:
 |-------|-------------|
 | `THEME_DEFAULT` | Industrial Grey |
 | `THEME_BLUE` | Classic Blue |
-| `THEME_MAC_MONO` | Monochrome (classic Mac OS style) |
+| `THEME_MONOCHROME` | Monochrome (classic Mac OS style) |

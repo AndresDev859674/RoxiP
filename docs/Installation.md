@@ -1,6 +1,7 @@
 # Installation And a Quick Overview
 
 To get started with RoxiP, there are two ways to compile it: using either Meson (with Ninja) or make.
+You don't necessarily need to use Meson.
 
 ## Quick Start
 

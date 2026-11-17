@@ -13,7 +13,7 @@ void render_desktop(void) {
     }
 
     /* Render background according to active theme */
-    if (current_theme == THEME_MAC_MONO) {
+    if (current_theme == THEME_MONOCHROME) {
         /* Soft, low-contrast dither pattern for classic Mac OS style */
         unsigned char mac_dither = make_color(COLOR_LIGHT_GREY, COLOR_WHITE);
         for (int y = 0; y < VGA_HEIGHT; y++) {
@@ -31,7 +31,7 @@ void render_desktop(void) {
     int tab_x[3] = {2, 10, 22};
     for (int i = 0; i < 3; i++) {
         unsigned char tab_color;
-        if (current_theme == THEME_MAC_MONO) {
+        if (current_theme == THEME_MONOCHROME) {
             tab_color = (i == active_tab) ? make_color(COLOR_WHITE, COLOR_BLACK) : make_color(COLOR_BLACK, COLOR_WHITE);
         } else if (current_theme == THEME_BLUE) {
             tab_color = (i == active_tab) ? make_color(COLOR_WHITE, COLOR_BLUE) : make_color(COLOR_BLACK, COLOR_LIGHT_GREY);
@@ -42,7 +42,7 @@ void render_desktop(void) {
     }
 
     unsigned char box_border, box_bg, title_color;
-    if (current_theme == THEME_MAC_MONO) {
+    if (current_theme == THEME_MONOCHROME) {
         box_border  = make_color(COLOR_BLACK, COLOR_WHITE);
         box_bg      = make_color(COLOR_BLACK, COLOR_WHITE);
         title_color = make_color(COLOR_WHITE, COLOR_BLACK);
@@ -75,7 +75,7 @@ void render_desktop(void) {
         /* Padded options strings to overwrite old characters and prevent ghost artifacts */
         vga_draw_string(current_theme == THEME_DEFAULT  ? "[X] 1. Industrial Grey (Default) " : "[ ] 1. Industrial Grey (Default) ", box_bg, 6, 7);
         vga_draw_string(current_theme == THEME_BLUE     ? "[X] 2. Classic Blue Theme       " : "[ ] 2. Classic Blue Theme       ", box_bg, 6, 9);
-        vga_draw_string(current_theme == THEME_MAC_MONO ? "[X] 3. Monochrome Theme         " : "[ ] 3. Monochrome Theme         ", box_bg, 6, 11);
+        vga_draw_string(current_theme == THEME_MONOCHROME ? "[X] 3. Monochrome Theme         " : "[ ] 3. Monochrome Theme         ", box_bg, 6, 11);
 
         vga_draw_string("Press [1], [2] or [3] to apply theme.", box_bg, 4, 13);
     } else {
@@ -93,7 +93,7 @@ void render_desktop(void) {
     vga_draw_string("Right Ctrl: Toggle", box_bg, 55, 11); vga_draw_string("empty black screen", ctrl_val, 55, 12);
 
     /* Footer Status Bar */
-    unsigned char bar_bottom = (current_theme == THEME_MAC_MONO) ? make_color(COLOR_WHITE, COLOR_BLACK) :
+    unsigned char bar_bottom = (current_theme == THEME_MONOCHROME) ? make_color(COLOR_WHITE, COLOR_BLACK) :
                                ((current_theme == THEME_DEFAULT) ? make_color(COLOR_BLACK, COLOR_LIGHT_GREY) : make_color(COLOR_BLACK, COLOR_CYAN));
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bar_bottom, x, VGA_HEIGHT - 1);
     vga_draw_string(" Tab/Arrows: Nav | Enter: Action | R-Ctrl: Hide | Alt/F1: perf Terminal ", bar_bottom, 1, VGA_HEIGHT - 1);
@@ -111,14 +111,14 @@ void render_perf_window(void) {
     }
     draw_top_header();
 
-    unsigned char bg_color = (current_theme == THEME_MAC_MONO) ? make_color(COLOR_BLACK, COLOR_WHITE) :
+    unsigned char bg_color = (current_theme == THEME_MONOCHROME) ? make_color(COLOR_BLACK, COLOR_WHITE) :
                              ((current_theme == THEME_BLUE) ? make_color(COLOR_WHITE, COLOR_BLUE) : make_color(COLOR_WHITE, COLOR_DARK_GREY));
     for (int y = 1; y < 24; y++) {
         vga_draw_char_at(' ', bg_color, 0, y);
         vga_draw_char_at(' ', bg_color, 79, y);
     }
 
-    unsigned char bar_bottom = (current_theme == THEME_MAC_MONO) ? make_color(COLOR_WHITE, COLOR_BLACK) :
+    unsigned char bar_bottom = (current_theme == THEME_MONOCHROME) ? make_color(COLOR_WHITE, COLOR_BLACK) :
                                ((current_theme == THEME_DEFAULT) ? make_color(COLOR_BLACK, COLOR_LIGHT_GREY) : make_color(COLOR_BLACK, COLOR_CYAN));
     for (int x = 0; x < VGA_WIDTH; x++) vga_draw_char_at(' ', bar_bottom, x, VGA_HEIGHT - 1);
     vga_draw_string(" Alt/F1: Back to Hub  |  R-Ctrl: Hide Hub  |  Type 'help' for commands ", bar_bottom, 1, VGA_HEIGHT - 1);

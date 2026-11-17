@@ -77,7 +77,7 @@ typedef enum {
 typedef enum {
     THEME_DEFAULT = 0,   /* Industrial Grey (Default) */
     THEME_BLUE = 1,      /* Classic Blue */
-    THEME_MAC_MONO = 2   /* Monochrome */
+    THEME_MONOCHROME = 2   /* Monochrome */
 } desk_theme_t;
 
 typedef struct {
