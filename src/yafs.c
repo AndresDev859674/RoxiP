@@ -279,7 +279,7 @@ const char* fs_read_file(const char* filename) {
             return synthetic_buf;
         } else if (strcmp(filename, "@fb0") == 0) {
             char hex[12];
-            hex_to_str((unsigned int)fb_pixels, hex);
+            hex_to_str((unsigned long)fb_pixels, hex);
             strcpy(synthetic_buf, "FB Base: ");
             strcpy(synthetic_buf + strlen(synthetic_buf), hex);
             strcpy(synthetic_buf + strlen(synthetic_buf), "\nRes: 320x200 / 80x25\nSize: 614400 Bytes");

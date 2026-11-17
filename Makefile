@@ -3,31 +3,51 @@ CC = arm-none-eabi-gcc
 AS = arm-none-eabi-as
 OBJCOPY = arm-none-eabi-objcopy
 
-ROCKCHIP ?= 0
-AMLOGIC ?= 0
 BOARD ?= versatilepb
 DEBUG ?= 0
 BUILD_CLI ?= 0
 GDB_PORT ?= 7777
 
-# Force board when corresponding flag is passed
+# Legacy board-selection flags (kept for backward compatibility)
+ROCKCHIP ?= 0
+AMLOGIC ?= 0
+RISCVVIRT ?= 0
+
+# Force board when corresponding legacy flag is passed
 ifeq ($(ROCKCHIP),1)
     BOARD = rockchip
 endif
 ifeq ($(AMLOGIC),1)
     BOARD = amlogic
 endif
-
-# Select CPU target architecture based on active board
-ifeq ($(BOARD),rockchip)
-    ARCH_CPU ?= cortex-a7
-else ifeq ($(BOARD),amlogic)
-    ARCH_CPU ?= cortex-a53
-else
-    ARCH_CPU ?= arm926ej-s
+ifeq ($(RISCVVIRT),1)
+    BOARD = riscv-virt
 endif
 
-COMMON_FLAGS = -mcpu=$(ARCH_CPU) -marm -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD)
+# Select toolchain and CPU target architecture based on active board
+ifeq ($(BOARD),riscv-virt)
+    CC = riscv64-elf-gcc
+    AS = riscv64-elf-as
+    OBJCOPY = riscv64-elf-objcopy
+    ARCH_CPU ?= rv64gc
+    ABI_FLAGS = -march=$(ARCH_CPU) -mabi=lp64 -mcmodel=medany
+    AS_FLAGS = -march=$(ARCH_CPU) -mabi=lp64
+    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD) -D__riscv__
+    STARTUP_SRC = startup_riscv.S
+else
+    ARCH_CPU ?= arm926ej-s
+    ifeq ($(BOARD),rockchip)
+        ARCH_CPU = cortex-a7
+    else ifeq ($(BOARD),amlogic)
+        ARCH_CPU = cortex-a53
+    endif
+    ABI_FLAGS = -mcpu=$(ARCH_CPU) -marm
+    AS_FLAGS = -mcpu=$(ARCH_CPU)
+    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD)
+    STARTUP_SRC = startup.s
+endif
+
+COMMON_FLAGS = $(ABI_FLAGS) $(CFLAGS_BASE)
 
 ifeq ($(DEBUG),1)
     CFLAGS = $(COMMON_FLAGS) -O0 -g -DDEBUG
@@ -40,6 +60,7 @@ FIRMWARE_OBJS = $(FIRMWARE_SRCS:.c=.o)
 
 DRIVER_OBJS = src/drivers/uart.o \
               src/drivers/display.o \
+              src/drivers/hdmi.o \
               src/drivers/input.o \
               src/drivers/storage_audio.o
 
@@ -64,18 +85,33 @@ ifeq ($(BUILD_CLI),1)
     TARGETS += roxip-cli
 endif
 
-.PHONY: all bin elf cli img img-run run qemu debug rockchip clean clean-all
+.PHONY: all bin elf cli img img-run run qemu debug rockchip amlogic riscv-virt \
+        run-rockchip run-amlogic run-riscv-virt clean clean-all
 
 # Default target
 all: $(TARGETS)
 
 # Target shortcut to build for Rockchip platform
 rockchip:
-	@$(MAKE) ROCKCHIP=1 all
+	@$(MAKE) BOARD=rockchip all
 
 # Target shortcut to build for Amlogic Meson platform
 amlogic:
-	@$(MAKE) AMLOGIC=1 all
+	@$(MAKE) BOARD=amlogic all
+
+# Target shortcut to build for RISC-V virt platform
+riscv-virt:
+	@$(MAKE) BOARD=riscv-virt all
+
+# Convenience: build and run for a specific board
+run-rockchip:
+	@$(MAKE) BOARD=rockchip run qemu
+
+run-amlogic:
+	@$(MAKE) BOARD=amlogic run qemu
+
+run-riscv-virt:
+	@$(MAKE) BOARD=riscv-virt run qemu
 
 # Target for raw binary only
 bin: roxip.bin
@@ -91,8 +127,12 @@ roxip-cli: src/cli/roxip-cli.c
 	$(HOST_CC) -O2 -Wall -Wextra src/cli/roxip-cli.c -o roxip-cli
 
 # Assembly Startup Rule
-startup.o: startup.s
-	$(AS) -mcpu=$(ARCH_CPU) startup.s -o startup.o
+startup.o: $(STARTUP_SRC)
+ifeq ($(BOARD),riscv-virt)
+	$(AS) -march=$(ARCH_CPU) -mabi=lp64 $(STARTUP_SRC) -o startup.o
+else
+	$(AS) $(AS_FLAGS) $(STARTUP_SRC) -o startup.o
+endif
 
 # C Compilation Rule for firmware/
 firmware/$(BOARD)/%.o: firmware/$(BOARD)/%.c
@@ -112,12 +152,18 @@ src/ui/%.o: src/ui/%.c
 
 # Link via GCC Driver
 roxip.elf: $(OBJS)
+ifeq ($(BOARD),riscv-virt)
+	$(CC) $(CFLAGS) $(OBJS) -Wl,-T,linker_riscv.ld -nostdlib -lgcc -o roxip.elf
+else
 	$(CC) $(CFLAGS) $(OBJS) -Wl,-T,linker.ld -nostdlib -lgcc -o roxip.elf
+endif
 
 roxip.bin: roxip.elf
 	$(OBJCOPY) -O binary roxip.elf roxip.bin
 
 # Target for packaging Monolithic System Image
+# roxip.img contains roxip.bin embedded at offset 0, followed by roxip.storage.
+# QEMU loads the kernel via -kernel and mounts roxip.img as the storage drive.
 img: roxip.bin
 	@echo "[IMG] Ensuring persistent storage file exists..."
 	@if [ ! -f roxip.storage ]; then \
@@ -127,14 +173,20 @@ img: roxip.bin
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
 	fi
-	@echo "[IMG] Generating roxip.img as raw storage image..."
+	@echo "[IMG] Generating roxip.img (kernel embedded at offset 0 + storage)..."
 	@cp roxip.storage roxip.img
-	@echo "[IMG] System image roxip.img ready."
+	@dd if=roxip.bin of=roxip.img conv=notrunc 2>/dev/null
+	@echo "[IMG] System image roxip.img ready (kernel @ 0x00000000, storage @ 0x00001000)."
 
 # Run monolithic .img directly in QEMU
 img-run: img
-	@echo "[QEMU] Booting RoxiP Kernel with roxip.img storage..."
-	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.img,if=pflash,format=raw -vga none -serial stdio -audio driver=none
+	@if [ "$(BOARD)" = "riscv-virt" ]; then \
+		echo "[QEMU] Booting RoxiP Kernel (RISC-V virt) from roxip.img..."; \
+		qemu-system-riscv64 -M virt -m 256M -kernel roxip.bin -drive file=roxip.img,if=none,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -vga none -serial stdio -audio driver=none -nographic; \
+	else \
+		echo "[QEMU] Booting RoxiP Kernel from roxip.img..."; \
+		qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.img,if=pflash,format=raw -vga none -serial stdio -audio driver=none; \
+	fi
 
 # Emulate in QEMU (Standard mode)
 run qemu: roxip.bin
@@ -146,19 +198,30 @@ run qemu: roxip.bin
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
 	fi
-	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -audio driver=none
+	@if [ "$(BOARD)" = "riscv-virt" ]; then \
+		echo "[QEMU] Booting RoxiP (RISC-V virt)..."; \
+		qemu-system-riscv64 -M virt -m 256M -kernel roxip.bin -drive file=roxip.storage,if=none,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -vga none -serial stdio -audio driver=none -nographic; \
+	else \
+		qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -audio driver=none; \
+	fi
 	
 # Launch QEMU frozen listening on custom GDB_PORT
 debug: roxip.bin
 	@if [ ! -f roxip.storage ]; then \
 		truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 	fi
-	@echo "[GDB Server listening on port $(GDB_PORT)] Connect with:"
-	@echo "  arm-none-eabi-gdb roxip.elf -ex 'target remote localhost:$(GDB_PORT)'"
-	qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -gdb tcp::$(GDB_PORT) -S
+	@if [ "$(BOARD)" = "riscv-virt" ]; then \
+		@echo "[GDB Server listening on port $(GDB_PORT)] Connect with:"; \
+		@echo "  riscv64-unknown-elf-gdb roxip.elf -ex 'target remote localhost:$(GDB_PORT)'"; \
+		qemu-system-riscv64 -M virt -m 256M -kernel roxip.bin -drive file=roxip.storage,if=none,format=raw,id=hd0 -device virtio-blk-device,drive=hd0 -vga none -serial stdio -audio driver=none -gdb tcp::$(GDB_PORT) -S -nographic; \
+	else \
+		@echo "[GDB Server listening on port $(GDB_PORT)] Connect with:"; \
+		@echo "  arm-none-eabi-gdb roxip.elf -ex 'target remote localhost:$(GDB_PORT)'"; \
+		qemu-system-arm -M versatilepb -cpu arm926 -m 256M -kernel roxip.bin -drive file=roxip.storage,if=pflash,format=raw -vga none -serial stdio -gdb tcp::$(GDB_PORT) -S; \
+	fi
 
 clean:
-	rm -f firmware/*/*.o src/drivers/*.o src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img
+	rm -f firmware/*/*.o src/drivers/*.o src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img startup_riscv.o
 
 clean-all: clean
 	rm -f roxip.storage

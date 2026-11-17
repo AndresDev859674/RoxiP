@@ -8,6 +8,7 @@ char uart_getc_nonblocking(void);
 
 /* Display Hardware Driver */
 void init_pl110_lcd(void);
+void init_hdmi_dvi(void);
 
 /* Input Drivers (KMI PS/2 Keyboard & Mouse) */
 void init_kmi_mouse(void);

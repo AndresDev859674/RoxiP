@@ -86,11 +86,19 @@ int env_unset(const char* key) {
 }
 
 static inline unsigned int read_cp15_main_id(void) {
+#ifndef __riscv__
     unsigned int val; asm volatile("mrc p15, 0, %0, c0, c0, 0" : "=r"(val)); return val;
+#else
+    return 0;
+#endif
 }
 
 static inline unsigned int read_cp15_control(void) {
+#ifndef __riscv__
     unsigned int val; asm volatile("mrc p15, 0, %0, c1, c0, 0" : "=r"(val)); return val;
+#else
+    return 0;
+#endif
 }
 
 static void execute_ps(void) {
@@ -143,6 +151,7 @@ static void execute_zcatcher(void) {
     char hex_buf[12], num_buf[16];
     term_add_line(" ");
 
+#ifndef __riscv__
     volatile unsigned int* sys_id_reg = (volatile unsigned int*)(0x10000000);
     hex_to_str(*sys_id_reg, hex_buf);
     char sys_line[80] = "[SYSCON ID]       : "; strcpy(sys_line + 20, hex_buf); term_add_line(sys_line);
@@ -167,8 +176,9 @@ static void execute_zcatcher(void) {
     if (cp15_ctrl & (1 << 12)) strcpy(flags_line + flags_idx, "I-Cache:ON");
     else strcpy(flags_line + flags_idx, "I-Cache:OFF");
     term_add_line(flags_line);
+#endif /* !__riscv__ */
 
-    hex_to_str((unsigned int)fb_pixels, hex_buf);
+    hex_to_str((unsigned long)fb_pixels, hex_buf);
     char fb_line[80] = "[PL110 FB BASE]   : "; strcpy(fb_line + 20, hex_buf); term_add_line(fb_line);
 
 #ifdef PL110_LCDCONTROL
@@ -189,7 +199,7 @@ static void execute_lsblk(void) {
     term_add_line("ram_vec0      1:0    ram    0x00000000  4096 B      1024 B (Vectors)");
 
     char heap_line[80] = "ram_heap0     1:1    ram    ";
-    unsigned int heap_base = ((unsigned int)__bss_end + 15) & ~15;
+    unsigned long heap_base = ((unsigned long)__bss_end + 15) & ~15;
     if (heap_base < 0x00100000) heap_base = 0x00100000 + 0x20000;
     hex_to_str(heap_base, hex_buf);
     strcpy(heap_line + 28, hex_buf); strcpy(heap_line + 38, "  512 KB      ");
@@ -198,7 +208,7 @@ static void execute_lsblk(void) {
     term_add_line(heap_line);
 
     char fb_line[80] = "fb_pl1100    29:0    vram   ";
-    hex_to_str((unsigned int)fb_pixels, hex_buf);
+    hex_to_str((unsigned long)fb_pixels, hex_buf);
     strcpy(fb_line + 28, hex_buf); strcpy(fb_line + 38, "  614 KB      614400 B"); term_add_line(fb_line);
 
     char yafs_line[80] = "yafs_0    31:0    yafs   RAM         ";
@@ -244,7 +254,7 @@ void execute_stat(const char* filename) {
             strcpy(line, "File Name  : "); strcpy(line + 13, fs_table[i].name); term_add_line(line);
             int_to_str(fs_table[i].size, num_buf);
             strcpy(line, "File Size  : "); strcpy(line + 13, num_buf); strcpy(line + 13 + strlen(num_buf), " Bytes"); term_add_line(line);
-            hex_to_str((unsigned int)fs_table[i].content, hex_buf);
+            hex_to_str((unsigned long)fs_table[i].content, hex_buf);
             strcpy(line, "RAM Addr   : "); strcpy(line + 13, hex_buf); term_add_line(line);
             strcpy(line, "Record Type: "); strcpy(line + 13, fs_table[i].is_dir ? "Directory" : "Regular File"); term_add_line(line);
             strcpy(line, "Attributes : "); strcpy(line + 13, fs_table[i].is_vfat ? "VFAT / LFN" : "Standard YAFS"); term_add_line(line);
@@ -306,6 +316,7 @@ void execute_xxd(const char* filename) {
     if (size > 128) term_add_line("[xxd: Truncated at 128 bytes]");
 }
 
+#ifndef __riscv__
 static void decode_arm32_inst(unsigned int addr, unsigned int inst, char* out_line) {
     const char* reg_names[] = {"R0","R1","R2","R3","R4","R5","R6","R7","R8","R9","R10","FP","IP","SP","LR","PC"};
     const char* cond_names[] = {"EQ","NE","CS","CC","MI","PL","VS","VC","HI","LS","GE","LT","GT","LE","",""};
@@ -413,7 +424,9 @@ static void decode_arm32_inst(unsigned int addr, unsigned int inst, char* out_li
 
     strcpy(out_line + pos, "DATA / UNDEF");
 }
+#endif /* !__riscv__ */
 
+#ifndef __riscv__
 void execute_disasm(const char* arg) {
     if (arg[0] == '\0') {
         term_add_line("Usage: disasm <filename|@node|0xADDR>");
@@ -453,6 +466,7 @@ void execute_disasm(const char* arg) {
         term_add_line(line);
     }
 }
+#endif /* !__riscv__ */
 
 void execute_rsh_script(const char* filename) {
     if (filename[0] == '\0') {
@@ -706,8 +720,10 @@ void execute_command(const char* cmd) {
     else if (strncmp(cmd, "stat ", 5) == 0) execute_stat(cmd + 5);
     else if (strcmp(cmd, "xxd") == 0) execute_xxd("");
     else if (strncmp(cmd, "xxd ", 4) == 0) execute_xxd(cmd + 4);
+#ifndef __riscv__
     else if (strcmp(cmd, "disasm") == 0) execute_disasm("");
     else if (strncmp(cmd, "disasm ", 7) == 0) execute_disasm(cmd + 7);
+#endif /* !__riscv__ */
     else if (strcmp(cmd, "sh") == 0 || strcmp(cmd, "rsh") == 0) term_add_line("Usage: sh <script.rsh>");
     else if (strncmp(cmd, "sh ", 3) == 0) execute_rsh_script(cmd + 3);
     else if (strncmp(cmd, "rsh ", 4) == 0) execute_rsh_script(cmd + 4);

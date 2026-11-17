@@ -1,5 +1,4 @@
 *.o
-
 src/*.o
 
 roxip.storage
@@ -17,4 +16,8 @@ roxip-cli
 *.tar
 
 build/
+build-riscv/
+build-test/
 builddir/
+builddir-riscv/
+builddir-test/

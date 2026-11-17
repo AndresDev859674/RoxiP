@@ -31,28 +31,48 @@ if board == 'rockchip'
   arch_cpu = 'cortex-a7'
 elif board == 'amlogic'
   arch_cpu = 'cortex-a53'
+elif board == 'riscv-virt'
+  arch_cpu = 'rv64gc'
 else
   arch_cpu = 'arm926ej-s'
 endif
 
+is_riscv = board == 'riscv-virt'
+
 message('RoxiP building for board: @0@ (cpu: @1@)'.format(board, arch_cpu))
 
 # ---------------------------------------------------------------------------
-# Compiler flags (ARM bare-metal)
+# Compiler flags (ARM bare-metal or RISC-V bare-metal)
 # ---------------------------------------------------------------------------
 source_root = meson.project_source_root()
 
-c_args = [
-  '-mcpu=' + arch_cpu,
-  '-marm',
-  '-ffreestanding',
-  '-fno-stack-protector',
-  '-Wall', '-Wextra', '-Werror',
-  '-nostdlib',
-  '-fno-builtin',
-  '-I' + source_root + '/src/include',
-  '-I' + source_root + '/firmware/' + board,
-]
+if is_riscv
+  c_args = [
+    '-march=' + arch_cpu,
+    '-mabi=lp64',
+    '-mcmodel=medany',
+    '-ffreestanding',
+    '-fno-stack-protector',
+    '-Wall', '-Wextra', '-Werror',
+    '-nostdlib',
+    '-fno-builtin',
+    '-I' + source_root + '/src/include',
+    '-I' + source_root + '/firmware/' + board,
+    '-D__riscv__',
+  ]
+else
+  c_args = [
+    '-mcpu=' + arch_cpu,
+    '-marm',
+    '-ffreestanding',
+    '-fno-stack-protector',
+    '-Wall', '-Wextra', '-Werror',
+    '-nostdlib',
+    '-fno-builtin',
+    '-I' + source_root + '/src/include',
+    '-I' + source_root + '/firmware/' + board,
+  ]
+endif
 
 if debug
   c_args += ['-O0', '-g', '-DDEBUG']
@@ -64,23 +84,34 @@ endif
 # ---------------------------------------------------------------------------
 # Compilers / tools
 # ---------------------------------------------------------------------------
-armgcc = find_program('arm-none-eabi-gcc')
-armas = find_program('arm-none-eabi-as')
-objcopy = find_program('arm-none-eabi-objcopy')
-
-# ---------------------------------------------------------------------------
-# Source files
-# ---------------------------------------------------------------------------
-startup = files('startup.s')
+if is_riscv
+  armgcc = find_program('riscv64-elf-gcc')
+  armas = find_program('riscv64-elf-as')
+  objcopy = find_program('riscv64-elf-objcopy')
+  startup = files('startup_riscv.S')
+else
+  armgcc = find_program('arm-none-eabi-gcc')
+  armas = find_program('arm-none-eabi-as')
+  objcopy = find_program('arm-none-eabi-objcopy')
+  startup = files('startup.s')
+endif
 
 # ---------------------------------------------------------------------------
 # Compile objects
 # ---------------------------------------------------------------------------
-startup_obj = custom_target('startup-obj',
-  input: startup,
-  output: 'startup.o',
-  command: [armas, '-mcpu=' + arch_cpu, '@INPUT@', '-o', '@OUTPUT@'],
-)
+if is_riscv
+  startup_obj = custom_target('startup-obj',
+    input: startup,
+    output: 'startup.o',
+    command: [armas, '-march=' + arch_cpu, '-mabi=lp64', '@INPUT@', '-o', '@OUTPUT@'],
+  )
+else
+  startup_obj = custom_target('startup-obj',
+    input: startup,
+    output: 'startup.o',
+    command: [armas, '-mcpu=' + arch_cpu, '@INPUT@', '-o', '@OUTPUT@'],
+  )
+endif
 
 # Firmware objects (board-specific)
 firmware_board = files('firmware/@0@/board.c'.format(board))
@@ -109,6 +140,11 @@ driver_objs = [
   custom_target('driver-display-obj',
     input: files('src/drivers/display.c'),
     output: 'display.o',
+    command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+  ),
+  custom_target('driver-hdmi-obj',
+    input: files('src/drivers/hdmi.c'),
+    output: 'hdmi.o',
     command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
   ),
   custom_target('driver-input-obj',
@@ -189,7 +225,7 @@ all_objs = [startup_obj] + firmware_objs + driver_objs + ui_objs + kernel_objs
 roxip_elf = custom_target('roxip-elf',
   input: all_objs,
   output: 'roxip.elf',
-  command: [armgcc] + c_args + ['-o', '@OUTPUT@', '@INPUT@', '-Wl,-T,@SOURCE_ROOT@/linker.ld', '-nostdlib', '-lgcc'],
+  command: [armgcc] + c_args + ['-o', '@OUTPUT@', '@INPUT@', '-Wl,-T,@SOURCE_ROOT@/' + (is_riscv ? 'linker_riscv.ld' : 'linker.ld'), '-nostdlib', '-lgcc'],
 )
 
 # ---------------------------------------------------------------------------
@@ -217,11 +253,12 @@ endif
 # ---------------------------------------------------------------------------
 # QEMU run targets (meson equivalents of `make run`)
 # ---------------------------------------------------------------------------
-qemu = find_program('qemu-system-arm', required: false)
+qemu_arm = find_program('qemu-system-arm', required: false)
+qemu_riscv = find_program('qemu-system-riscv64', required: false)
 
 build_dir = meson.current_build_dir()
 
-if qemu.found()
+if qemu_arm.found() or qemu_riscv.found()
   # Storage image (64 MB raw)
   roxip_storage = custom_target('roxip-storage',
     output: 'roxip.storage',
@@ -231,24 +268,54 @@ if qemu.found()
     ],
   )
 
-  # `meson compile -C builddir roxip-run`  → builds roxip.bin + storage, launches QEMU
-  # Shows boot logs on the serial console (terminal output).
-  roxip_run = custom_target('roxip-run',
+  # Combined image: roxip.bin embedded at offset 0, followed by roxip.storage
+  # QEMU loads the kernel via -kernel and mounts roxip.img as the storage drive.
+  roxip_img = custom_target('roxip-img',
     input: [roxip_bin, roxip_storage],
-    output: '.roxip-run-stamp',
+    output: 'roxip.img',
     command: [
-      qemu, '-M', 'versatilepb', '-cpu', 'arm926', '-m', '256M',
-      '-kernel', build_dir + '/roxip.bin',
-      '-drive', 'file=' + build_dir + '/roxip.storage,if=pflash,format=raw',
-      '-vga', 'none', '-serial', 'stdio', '-audio', 'driver=none',
+      'sh', '-c',
+      'cp @INPUT1@ @OUTPUT@ && dd if=@INPUT0@ of=@OUTPUT@ conv=notrunc 2>/dev/null',
     ],
   )
 
+  if is_riscv
+    qemu_cmd = [
+      qemu_riscv, '-M', 'virt', '-m', '256M',
+      '-kernel', build_dir + '/roxip.bin',
+      '-drive', 'file=' + build_dir + '/roxip.img,if=none,format=raw,id=hd0',
+      '-device', 'virtio-blk-device,drive=hd0',
+      '-vga', 'none', '-serial', 'stdio', '-audio', 'driver=none',
+      '-nographic',
+    ]
+    qemu_msg = 'qemu-system-riscv64 -M virt'
+  else
+    qemu_cmd = [
+      qemu_arm, '-M', 'versatilepb', '-cpu', 'arm926', '-m', '256M',
+      '-kernel', build_dir + '/roxip.bin',
+      '-drive', 'file=' + build_dir + '/roxip.img,if=pflash,format=raw',
+      '-vga', 'none', '-serial', 'stdio', '-audio', 'driver=none',
+    ]
+    qemu_msg = 'qemu-system-arm -M versatilepb'
+  endif
+
+  # `meson compile -C builddir roxip-run`  → builds roxip.bin + img, launches QEMU
+  # Shows boot logs on the serial console (terminal output).
+  roxip_run = custom_target('roxip-run',
+    input: [roxip_bin, roxip_img],
+    output: '.roxip-run-stamp',
+    command: qemu_cmd,
+  )
+
+  # `meson compile -C builddir roxip-img` → builds the combined roxip.img file
   message('')
   message('To run in QEMU (meson equivalent of `make run`):')
-  message('  meson compile -C builddir roxip-run   (shows serial boot logs)')
-  message('  (press Ctrl+C to stop QEMU)')
+  message('  meson compile -C builddir roxip-run   (' + qemu_msg + ')')
+  message('  (shows serial boot logs, press Ctrl+C to stop QEMU)')
+  message('')
+  message('To package a monolithic system image:')
+  message('  meson compile -C builddir roxip-img   (produces builddir/roxip.img)')
   message('')
 else
-  warning('qemu-system-arm not found; install it to test in QEMU')
+  warning('No QEMU emulator found; install qemu-system-arm or qemu-system-riscv64 to test in QEMU')
 endif

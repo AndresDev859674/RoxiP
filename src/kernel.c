@@ -130,6 +130,9 @@ void kmain(void) {
     init_pl110_lcd();
     detect_gpu(gpu_model_string);
 
+    dbg_log("[05b] Initializing HDMI/DVI Display...");
+    init_hdmi_dvi();
+
     dbg_log("[06/12] Checking Audio Engine...");
     init_hda_audio();
 

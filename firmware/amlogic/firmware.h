@@ -20,6 +20,28 @@
 #define HDMI_TX_STATUS (*((volatile unsigned int*)(HDMI_TX_BASE + 0x04)))
 #define HDMI_PHY_BASE  0xFF201000
 
+/* HDMI TX video timing registers */
+#define HDMI_TX_H_START   (*((volatile unsigned int*)(HDMI_TX_BASE + 0x08)))
+#define HDMI_TX_H_END     (*((volatile unsigned int*)(HDMI_TX_BASE + 0x0C)))
+#define HDMI_TX_V_START   (*((volatile unsigned int*)(HDMI_TX_BASE + 0x10)))
+#define HDMI_TX_V_END     (*((volatile unsigned int*)(HDMI_TX_BASE + 0x14)))
+#define HDMI_TX_HSYNC_W   (*((volatile unsigned int*)(HDMI_TX_BASE + 0x18)))
+#define HDMI_TX_VSYNC_W   (*((volatile unsigned int*)(HDMI_TX_BASE + 0x1C)))
+#define HDMI_TX_MODE      (*((volatile unsigned int*)(HDMI_TX_BASE + 0x20)))
+#define HDMI_TX_ENABLE    (*((volatile unsigned int*)(HDMI_TX_BASE + 0x24)))
+
+/* HDMI TX_MODE bits */
+#define HDMI_MODE_DVI     0x00000001   /* DVI mode: no InfoFrames, no audio */
+#define HDMI_MODE_HDMI    0x00000002   /* HDMI mode: with InfoFrames and audio */
+
+/* HDMI PHY registers */
+#define HDMI_PHY_CTRL0    (*((volatile unsigned int*)(HDMI_PHY_BASE + 0x00)))
+#define HDMI_PHY_CTRL1    (*((volatile unsigned int*)(HDMI_PHY_BASE + 0x04)))
+#define HDMI_PHY_POWER    (*((volatile unsigned int*)(HDMI_PHY_BASE + 0x08)))
+
+/* PHY power bits */
+#define HDMI_PHY_POWER_ON  0x00000001
+
 /* HIU (clock & reset control) */
 #define HHI_BASE  0xFF620000
 #define HHI_CNTL  (*((volatile unsigned int*)(HHI_BASE + 0x00)))

@@ -203,7 +203,7 @@ int strncmp(const char* s1, const char* s2, int n);
 int strlen(const char* str);
 void strcpy(char* dest, const char* src);
 void int_to_str(int num, char* str);
-void hex_to_str(unsigned int val, char* buf);
+void hex_to_str(unsigned long val, char* buf);
 void init_heap(void);
 unsigned int get_used_heap_bytes(void);
 void* malloc(unsigned int size);
@@ -282,7 +282,9 @@ void dbg_log(const char* msg);
 /* Misc Shell Functions */
 void execute_stat(const char* filename);
 void execute_xxd(const char* filename);
+#ifndef __riscv__
 void execute_disasm(const char* arg);
+#endif /* !__riscv__ */
 
 /* Pipeline & Synthetic Nodes */
 extern char pipe_buffer[4096];

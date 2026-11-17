@@ -1,0 +1,29 @@
+# cross-riscv64-elf.txt
+# Cross-compilation file for RoxiP bare-metal RISC-V targets.
+#
+# Usage:
+#   meson setup builddir --cross-file cross-riscv64-elf.txt -Dboard=riscv-virt
+#   meson compile -C builddir
+#
+# Tool names are specified without absolute paths so Meson can locate them via
+# PATH on any platform (Linux, macOS, Windows, etc.).
+
+[binaries]
+c = 'riscv64-elf-gcc'
+ar = 'riscv64-elf-ar'
+as = 'riscv64-elf-as'
+objcopy = 'riscv64-elf-objcopy'
+strip = 'riscv64-elf-strip'
+nm = 'riscv64-elf-nm'
+readelf = 'riscv64-elf-readelf'
+
+# Python 3 for meson itself
+python3 = 'python3'
+
+[host_machine]
+system = 'baremetal'
+cpu_family = 'riscv'
+cpu = 'riscv64'
+endian = 'little'
+
+[properties]

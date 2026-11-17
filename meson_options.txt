@@ -5,7 +5,7 @@
 #   meson setup builddir --cross-file cross-arm-none-eabi.txt -Dboard=rockchip -Ddebug=true
 
 option('board', type: 'combo',
-  choices: ['versatilepb', 'rockchip', 'amlogic'],
+  choices: ['versatilepb', 'rockchip', 'amlogic', 'riscv-virt'],
   value: 'versatilepb',
   description: 'Target board / SoC')
 

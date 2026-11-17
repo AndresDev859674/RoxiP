@@ -70,7 +70,7 @@ void int_to_str(int num, char* str) {
     str[i] = '\0';
 }
 
-void hex_to_str(unsigned int val, char* buf) {
+void hex_to_str(unsigned long val, char* buf) {
     const char hex_chars[] = "0123456789ABCDEF";
     buf[0] = '0'; buf[1] = 'x';
     for (int i = 7; i >= 0; i--) buf[2 + (7 - i)] = hex_chars[(val >> (i * 4)) & 0xF];
@@ -81,7 +81,7 @@ void init_heap(void) {
     dbg_log("    [HEAP 1/3] Initializing Memory Arena...");
     dbg_log("    [HEAP 2/3] Aligning heap after __bss_end...");
 
-    unsigned int heap_start = ((unsigned int)__bss_end + 15) & ~15;
+    unsigned long heap_start = ((unsigned long)__bss_end + 15) & ~15;
     if (heap_start < 0x00100000) heap_start = 0x00100000 + 0x20000;
 
     dbg_log("    [HEAP 3/3] Writing Free List Header...");
@@ -90,7 +90,7 @@ void init_heap(void) {
     free_list->is_free = 1;
     free_list->next = 0;
 
-    log_boot_event("[OK] Dynamic Heap allocated safely in ARM RAM");
+    log_boot_event("[OK] Dynamic Heap allocated safely");
 }
 
 unsigned int get_used_heap_bytes(void) {
