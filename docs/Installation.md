@@ -77,6 +77,18 @@ See `docs/docker.md` for full Docker documentation.
 | `amlogic` | cortex-a53 | arm-none-eabi-* | hardware only |
 | `riscv-virt` | rv64gc | riscv64-elf-* | `virt` (needs OpenSBI) |
 
+## Build Options
+
+| Option | Make | Meson | Default | Description |
+|--------|------|-------|---------|-------------|
+| `BOARD` | `make BOARD=rockchip` | `-Dboard=rockchip` | `versatilepb` | Target board |
+| `NETWORK_ENABLED` | `make NETWORK_ENABLED=1` | `-Dnetwork-enabled=true` | disabled | Enable networking stack |
+| `roxip-debug` | `make DEBUG=1` | `-Droxip-debug=true` | disabled | Debug build |
+| `BUILD_CLI` | `make BUILD_CLI=1` | `-Dbuild-cli=true` | disabled | Build host CLI tool |
+
+Networking is disabled by default to minimize attack surface and complexity.
+See `docs/drivers/network.md` for details.
+
 ## License
 
 RoxiP is released under the GPL. See `LICENSE` for details.

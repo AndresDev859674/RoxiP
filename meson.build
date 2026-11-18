@@ -23,6 +23,7 @@ board = get_option('board')
 debug = get_option('roxip-debug')
 build_cli = get_option('build-cli')
 gdb_port = get_option('gdb-port')
+network_enabled = get_option('network-enabled')
 
 # ---------------------------------------------------------------------------
 # Architecture selection based on board
@@ -57,6 +58,8 @@ if is_riscv
     '-nostdlib',
     '-fno-builtin',
     '-I' + source_root + '/src/include',
+    '-I' + source_root + '/src/net',
+    '-I' + source_root + '/src/drivers',
     '-I' + source_root + '/firmware/' + board,
     '-D__riscv__',
   ]
@@ -70,8 +73,15 @@ else
     '-nostdlib',
     '-fno-builtin',
     '-I' + source_root + '/src/include',
+    '-I' + source_root + '/src/net',
+    '-I' + source_root + '/src/drivers',
     '-I' + source_root + '/firmware/' + board,
   ]
+endif
+
+if network_enabled
+  c_args += ['-DNETWORK_ENABLED', '-DNET_ARP', '-DNET_IP', '-DNET_ICMP', '-DNET_UDP']
+  message('Network support enabled')
 endif
 
 if debug
@@ -164,6 +174,46 @@ driver_objs = [
   ),
 ]
 
+if network_enabled
+  driver_objs += [
+    custom_target('driver-ne2000-obj',
+      input: files('src/drivers/ne2000.c'),
+      output: 'ne2000.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+  ]
+
+  net_objs = [
+    custom_target('net-net-obj',
+      input: files('src/net/net.c'),
+      output: 'net.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+    custom_target('net-arp-obj',
+      input: files('src/net/arp.c'),
+      output: 'arp.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+    custom_target('net-ip-obj',
+      input: files('src/net/ip.c'),
+      output: 'ip.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+    custom_target('net-icmp-obj',
+      input: files('src/net/icmp.c'),
+      output: 'icmp.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+    custom_target('net-udp-obj',
+      input: files('src/net/udp.c'),
+      output: 'udp.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+  ]
+else
+  net_objs = []
+endif
+
 # UI objects
 ui_objs = [
   custom_target('ui-core-obj',
@@ -222,7 +272,7 @@ kernel_objs = [
   ),
 ]
 
-all_objs = [startup_obj] + firmware_objs + driver_objs + ui_objs + kernel_objs
+all_objs = [startup_obj] + firmware_objs + driver_objs + net_objs + ui_objs + kernel_objs
 
 # ---------------------------------------------------------------------------
 # Link: roxip.elf

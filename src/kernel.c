@@ -2,6 +2,11 @@
 #include "hal.h"
 #include "drivers.h"
 
+#ifdef NETWORK_ENABLED
+#include "net.h"
+#include "drivers/network.h"
+#endif
+
 system_mode_t current_mode = MODE_PERF_CLI;
 desk_theme_t current_theme = THEME_DEFAULT;
 
@@ -144,6 +149,12 @@ void kmain(void) {
 
     dbg_log("[08b] Initializing FAT32 Read-Only Driver...");
     fat32_init();
+
+#ifdef NETWORK_ENABLED
+    dbg_log("[08c] Initializing Network Stack...");
+    net_init();
+    ne2000_init_driver();
+#endif
 
     dbg_log("[09/12] Initializing comcow Compositor...");
     init_comcow();

@@ -7,6 +7,7 @@ BOARD ?= versatilepb
 DEBUG ?= 0
 BUILD_CLI ?= 0
 GDB_PORT ?= 7777
+NETWORK_ENABLED ?= 0
 
 # Legacy board-selection flags (kept for backward compatibility)
 ROCKCHIP ?= 0
@@ -29,13 +30,13 @@ ifeq ($(BOARD),riscv-virt)
     CC = riscv64-elf-gcc
     AS = riscv64-elf-as
     OBJCOPY = riscv64-elf-objcopy
-    ARCH_CPU ?= rv64gc
-    ABI_FLAGS = -march=$(ARCH_CPU) -mabi=lp64 -mcmodel=medany
-    AS_FLAGS = -march=$(ARCH_CPU) -mabi=lp64
-    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD) -D__riscv__
+    ARCH_CPU = rv64gc
+    ABI_FLAGS = -march=rv64gc -mabi=lp64 -mcmodel=medany
+    AS_FLAGS = -march=rv64gc -mabi=lp64
+    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Isrc/net -Isrc/drivers -Ifirmware/$(BOARD) -D__riscv__
     STARTUP_SRC = startup_riscv.S
 else
-    ARCH_CPU ?= arm926ej-s
+    ARCH_CPU = arm926ej-s
     ifeq ($(BOARD),rockchip)
         ARCH_CPU = cortex-a7
     else ifeq ($(BOARD),amlogic)
@@ -43,16 +44,25 @@ else
     endif
     ABI_FLAGS = -mcpu=$(ARCH_CPU) -marm
     AS_FLAGS = -mcpu=$(ARCH_CPU)
-    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Ifirmware/$(BOARD)
+    CFLAGS_BASE = -ffreestanding -fno-stack-protector -Wall -Wextra -Werror -nostdlib -fno-builtin -Isrc/include -Isrc/net -Isrc/drivers -Ifirmware/$(BOARD)
     STARTUP_SRC = startup.s
 endif
 
 COMMON_FLAGS = $(ABI_FLAGS) $(CFLAGS_BASE)
 
+ifeq ($(NETWORK_ENABLED),1)
+    COMMON_FLAGS += -DNETWORK_ENABLED -DNET_ARP -DNET_IP -DNET_ICMP -DNET_UDP
+endif
+
+ifeq ($(BOARD),riscv-virt)
+    # RISC-V LTO has issues; disable LTO
+    CFLAGS = $(COMMON_FLAGS) -O2 -g -fno-lto
+else
 ifeq ($(DEBUG),1)
     CFLAGS = $(COMMON_FLAGS) -O0 -g -DDEBUG
 else
     CFLAGS = $(COMMON_FLAGS) -O3 -flto -fomit-frame-pointer
+endif
 endif
 
 FIRMWARE_SRCS = $(wildcard firmware/$(BOARD)/*.c)
@@ -65,6 +75,17 @@ DRIVER_OBJS = src/drivers/uart.o \
               src/drivers/storage_audio.o \
               src/drivers/fat32.o
 
+ifeq ($(NETWORK_ENABLED),1)
+    DRIVER_OBJS += src/drivers/ne2000.o
+    NET_OBJS = src/net/net.o \
+               src/net/arp.o \
+               src/net/ip.o \
+               src/net/icmp.o \
+               src/net/udp.o
+else
+    NET_OBJS =
+endif
+
 UI_OBJS = src/ui/ui_core.o \
           src/ui/ui_cli.o \
           src/ui/ui_desktop.o \
@@ -74,6 +95,7 @@ UI_OBJS = src/ui/ui_core.o \
 OBJS = startup.o \
        $(FIRMWARE_OBJS) \
        $(DRIVER_OBJS) \
+       $(NET_OBJS) \
        src/memory.o \
        src/yafs.o \
        src/graphics.o \
@@ -229,7 +251,7 @@ debug: roxip.bin
 	fi
 
 clean:
-	rm -f firmware/*/*.o src/drivers/*.o src/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img startup_riscv.o
+	rm -f firmware/*/*.o src/drivers/*.o src/*.o src/net/*.o src/ui/*.o *.o *.elf *.bin roxip-cli roxip.img roxip.storage startup_riscv.o
 
 clean-all: clean
 	rm -f roxip.storage

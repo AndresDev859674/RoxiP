@@ -20,3 +20,7 @@ option('build-cli', type: 'boolean',
 option('gdb-port', type: 'integer',
   value: 7777,
   description: 'GDB server port for debug target')
+
+option('network-enabled', type: 'boolean',
+  value: false,
+  description: 'Enable basic networking support (disabled by default)')
