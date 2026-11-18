@@ -269,7 +269,7 @@ if qemu_arm.found() or qemu_riscv.found()
     output: 'roxip.storage',
     command: [
       'sh', '-c',
-      'if [ ! -f @OUTPUT@ ]; then truncate -s 64M @OUTPUT@ 2>/dev/null || dd if=/dev/zero of=@OUTPUT@ bs=1M count=64 status=none; fi',
+      'if [ ! -f @OUTPUT@ ]; then truncate -s 64M @OUTPUT@ 2>/dev/null || dd if=/dev/zero of=@OUTPUT@ bs=1M count=64 status=none; else echo "[YAFS] Storage file @OUTPUT@ already exists — skipping creation."; fi',
     ],
   )
 

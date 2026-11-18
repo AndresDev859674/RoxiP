@@ -171,8 +171,11 @@ img: roxip.bin
 		if [ -f ./roxip-cli ]; then \
 			./roxip-cli create roxip.storage 64; \
 		else \
+			echo "[YAFS] Creating 64MB raw storage image for QEMU..."; \
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
+	else \
+		echo "[IMG] Storage file roxip.storage already exists — skipping creation."; \
 	fi
 	@echo "[IMG] Generating roxip.img (kernel embedded at offset 0 + storage)..."
 	@cp roxip.storage roxip.img
@@ -198,6 +201,8 @@ run qemu: roxip.bin
 			echo "[YAFS] Creating 64MB raw storage image for QEMU..."; \
 			truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
 		fi; \
+	else \
+		echo "[YAFS] Storage file roxip.storage already exists — skipping creation."; \
 	fi
 	@if [ "$(BOARD)" = "riscv-virt" ]; then \
 		echo "[QEMU] Booting RoxiP (RISC-V virt)..."; \
@@ -210,6 +215,8 @@ run qemu: roxip.bin
 debug: roxip.bin
 	@if [ ! -f roxip.storage ]; then \
 		truncate -s 64M roxip.storage 2>/dev/null || dd if=/dev/zero of=roxip.storage bs=1M count=64 status=none; \
+	else \
+		echo "[DEBUG] Storage file roxip.storage already exists — skipping creation."; \
 	fi
 	@if [ "$(BOARD)" = "riscv-virt" ]; then \
 		@echo "[GDB Server listening on port $(GDB_PORT)] Connect with:"; \
