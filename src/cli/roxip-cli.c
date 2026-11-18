@@ -248,10 +248,10 @@ static int cmd_write(const char* path, const char* yafs_name, const char* input_
 
     int target_idx = -1;
 
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
-        if (header->files[i].used && strcmp(header->files[i].name, vfs_name) == 0) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
+        if (header->files[i].used && strcmp(header->files[i].name, yafs_name) == 0) {
             if (header->files[i].is_dir) {
-                fprintf(stderr, "Error: Cannot overwrite directory '%s'.\n", vfs_name);
+                fprintf(stderr, "Error: Cannot overwrite directory '%s'.\n", yafs_name);
                 fclose(fp);
                 free(file_payload);
                 free(header);
@@ -263,14 +263,14 @@ static int cmd_write(const char* path, const char* yafs_name, const char* input_
     }
 
     if (target_idx == -1) {
-        if (header->file_count >= MAX_VFS_FILES) {
-            fprintf(stderr, "Error: Storage full (Maximum %d files reached).\n", MAX_VFS_FILES);
+        if (header->file_count >= MAX_YAFS_FILES) {
+            fprintf(stderr, "Error: Storage full (Maximum %d files reached).\n", MAX_YAFS_FILES);
             fclose(fp);
             free(file_payload);
             free(header);
             return 1;
         }
-        for (int i = 0; i < MAX_VFS_FILES; i++) {
+        for (int i = 0; i < MAX_YAFS_FILES; i++) {
             if (!header->files[i].used) {
                 target_idx = i;
                 header->file_count++;
@@ -280,18 +280,18 @@ static int cmd_write(const char* path, const char* yafs_name, const char* input_
     }
 
     file_record_t* rec = &header->files[target_idx];
-    snprintf(rec->name, MAX_FILENAME_LEN, "%s", vfs_name);
+    snprintf(rec->name, MAX_FILENAME_LEN, "%s", yafs_name);
     memcpy(rec->content, file_payload, payload_size);
     rec->size = (int)payload_size;
     rec->used = 1;
-    rec->is_vfat = (strlen(vfs_name) > 11) ? 1 : 0;
+    rec->is_vfat = (strlen(yafs_name) > 11) ? 1 : 0;
     rec->is_dir = 0;
 
     fseek(fp, 0, SEEK_SET);
     fwrite(header, sizeof(storage_header_t), 1, fp);
     fclose(fp);
 
-    printf("Successfully wrote '%s' into %s (%d bytes payload)\n", vfs_name, path, rec->size);
+    printf("Successfully wrote '%s' into %s (%d bytes payload)\n", yafs_name, path, rec->size);
 
     free(file_payload);
     free(header);
@@ -307,7 +307,7 @@ static int cmd_mkdir(const char* path, const char* dirname) {
         return 1;
     }
 
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
         if (header->files[i].used && strcmp(header->files[i].name, dirname) == 0) {
             fprintf(stderr, "Error: '%s' already exists.\n", dirname);
             fclose(fp);
@@ -316,7 +316,7 @@ static int cmd_mkdir(const char* path, const char* dirname) {
         }
     }
 
-    if (header->file_count >= MAX_VFS_FILES) {
+    if (header->file_count >= MAX_YAFS_FILES) {
         fprintf(stderr, "Error: Storage full.\n");
         fclose(fp);
         free(header);
@@ -324,7 +324,7 @@ static int cmd_mkdir(const char* path, const char* dirname) {
     }
 
     int target_idx = -1;
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
         if (!header->files[i].used) {
             target_idx = i;
             header->file_count++;
@@ -359,7 +359,7 @@ static int cmd_rm(const char* path, const char* target_name) {
     }
 
     int found = 0;
-    for (int i = 0; i < MAX_VFS_FILES; i++) {
+    for (int i = 0; i < MAX_YAFS_FILES; i++) {
         if (header->files[i].used && strcmp(header->files[i].name, target_name) == 0) {
             memset(&header->files[i], 0, sizeof(file_record_t));
             header->file_count--;
