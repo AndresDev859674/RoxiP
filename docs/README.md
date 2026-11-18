@@ -11,7 +11,6 @@ Key characteristics:
 * **Bare-metal** — Runs directly on hardware with no underlying OS.
 * **Single-file storage** — All data lives in `roxip.storage`, managed by YAFS. No partitions.
 * **Portable** — The same sources compile for VersatilePB, Rockchip, Amlogic Meson, and RISC-V virt.
-* **Small** — Targets under 15,000 lines of code.
 
 ## What You'll Need
 

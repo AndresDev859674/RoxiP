@@ -29,7 +29,6 @@ RoxiP is intentionally small:
 
 * The kernel links at `0x10000` (ARM) or `0x80000000` (RISC-V) and fits in under 100 KB.
 * The display is an 80×25 VGA text buffer rendered into a framebuffer — no GPU drivers, no windowing system, no compositing beyond text.
-* The codebase targets under 15,000 lines of code. (if possible)
 
 ## Portability
 
