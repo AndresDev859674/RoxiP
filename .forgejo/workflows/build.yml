@@ -1,0 +1,136 @@
+name: Build RoxiP
+
+on:
+  push:
+    branches: [ main, staging ]
+  pull_request:
+    branches: [ main, staging ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-make:
+    name: Make Build (${{ matrix.board }})
+    runs-on: codeberg-medium
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [ versatilepb, rockchip, amlogic, riscv-virt ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@a130901e9139bf329a3004c224695e8a87e0b86b # v4.2.2
+
+      - name: Install dependencies (ARM)
+        if: matrix.board != 'riscv-virt'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            arm-none-eabi-gcc \
+            qemu-system-arm \
+            meson \
+            ninja-build \
+            python3
+
+      - name: Install dependencies (RISC-V)
+        if: matrix.board == 'riscv-virt'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            riscv64-elf-gcc \
+            riscv64-elf-binutils \
+            qemu-system-riscv \
+            meson \
+            ninja-build \
+            python3
+
+      - name: Build with Make (${{ matrix.board }})
+        run: |
+          make clean
+          make ${{ matrix.board }}
+          test -f roxip.bin
+          test -f roxip.elf
+
+      - name: Build host CLI tool (versatilepb only)
+        if: matrix.board == 'versatilepb'
+        run: |
+          make cli
+          test -f roxip-cli
+
+      - name: Build system image (versatilepb only)
+        if: matrix.board == 'versatilepb'
+        run: |
+          make img
+          test -f roxip.img
+          test -f roxip.storage
+
+  build-meson:
+    name: Meson Build (${{ matrix.board }})
+    runs-on: codeberg-medium
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [ versatilepb, rockchip, amlogic, riscv-virt ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@a130901e9139bf329a3004c224695e8a87e0b86b # v4.2.2
+
+      - name: Install dependencies (ARM)
+        if: matrix.board != 'riscv-virt'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            arm-none-eabi-gcc \
+            meson \
+            ninja-build \
+            python3
+
+      - name: Install dependencies (RISC-V)
+        if: matrix.board == 'riscv-virt'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            riscv64-elf-gcc \
+            riscv64-elf-binutils \
+            meson \
+            ninja-build \
+            python3
+
+      - name: Configure with Meson (${{ matrix.board }})
+        run: |
+          if [ "${{ matrix.board }}" = "riscv-virt" ]; then
+            meson setup builddir --cross-file cross-riscv64-elf.txt -Dboard=${{ matrix.board }}
+          else
+            meson setup builddir --cross-file cross-arm-none-eabi.txt -Dboard=${{ matrix.board }}
+          fi
+
+      - name: Compile with Meson (${{ matrix.board }})
+        run: meson compile -C builddir roxip-bin
+
+      - name: Verify binary
+        run: test -f builddir/roxip.bin
+
+      - name: Cleanup
+        run: rm -rf builddir
+
+  lint:
+    name: Lint and Format Check
+    runs-on: codeberg-medium
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@a130901e9139bf329a3004c224695e8a87e0b86b # v4.2.2
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Check shell scripts
+        run: shellcheck -e SC2086 Makefile
+
+      - name: Check for trailing whitespace
+        run: |
+          if grep -rnE ' +$' src/ firmware/ startup.s linker.ld linker_riscv.ld; then
+            echo "ERROR: Trailing whitespace found"
+            exit 1
+          fi
