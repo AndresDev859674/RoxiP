@@ -62,7 +62,8 @@ DRIVER_OBJS = src/drivers/uart.o \
               src/drivers/display.o \
               src/drivers/hdmi.o \
               src/drivers/input.o \
-              src/drivers/storage_audio.o
+              src/drivers/storage_audio.o \
+              src/drivers/fat32.o
 
 UI_OBJS = src/ui/ui_core.o \
           src/ui/ui_cli.o \

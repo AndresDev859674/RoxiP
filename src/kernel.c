@@ -142,6 +142,9 @@ void kmain(void) {
     dbg_log("[08/12] Mounting File Systems...");
     init_filesystems();
 
+    dbg_log("[08b] Initializing FAT32 Read-Only Driver...");
+    fat32_init();
+
     dbg_log("[09/12] Initializing comcow Compositor...");
     init_comcow();
 

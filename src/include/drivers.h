@@ -20,4 +20,9 @@ char get_keyboard_input(void);
 void detect_primary_disk(char* out_buf);
 void init_hda_audio(void);
 
+/* FAT32 Read-Only Driver */
+int fat32_init(void);
+int fat32_read_file(const char* fname, unsigned char* out_buf, unsigned int max_size);
+int fat32_list_dir(void);
+
 #endif /* DRIVERS_H */

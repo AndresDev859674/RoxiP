@@ -157,6 +157,11 @@ driver_objs = [
     output: 'storage_audio.o',
     command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
   ),
+  custom_target('driver-fat32-obj',
+    input: files('src/drivers/fat32.c'),
+    output: 'fat32.o',
+    command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+  ),
 ]
 
 # UI objects

@@ -124,6 +124,7 @@ typedef struct {
     int used;
     int is_vfat;
     int is_dir;
+    int parent_dir;   /* -1 = root directory */
 } file_record_t;
 
 typedef struct {
@@ -202,6 +203,7 @@ int strcmp(const char* s1, const char* s2);
 int strncmp(const char* s1, const char* s2, int n);
 int strlen(const char* str);
 void strcpy(char* dest, const char* src);
+void strcat(char* dest, const char* src);
 void int_to_str(int num, char* str);
 void hex_to_str(unsigned long val, char* buf);
 void init_heap(void);

@@ -4,6 +4,12 @@ file_record_t fs_table[MAX_YAFS_FILES];
 int fs_file_count = 0;
 static char synthetic_buf[2048];
 
+/* Wear leveling: track write cycles and alternate storage header location */
+static unsigned int wear_write_count = 0;
+#define WEAR_LEVEL_BLOCKS 2
+#define WEAR_PRIMARY_OFFSET 0
+#define WEAR_BACKUP_OFFSET  (sizeof(storage_header_t))
+
 typedef struct {
     char name[100];
     char mode[8];
@@ -184,7 +190,137 @@ void execute_tar(const char* args) {
     }
 }
 
-static void pflash_write_byte(unsigned int offset, unsigned char val) {
+/* ----------------------------------------------------------------------
+ * Path resolution helpers (subdirectory support)
+ * ---------------------------------------------------------------------- */
+
+/* Split a path into components. Returns number of components found.
+ * Components are written into out_parts[], each null-terminated.
+ */
+static int split_path(const char* path, char out_parts[MAX_YAFS_FILES][MAX_FILENAME_LEN], int max_parts) {
+    int count = 0;
+    const char* p = path;
+
+    /* Skip leading slashes */
+    while (*p == '/') p++;
+
+    while (*p && count < max_parts) {
+        int i = 0;
+        while (*p && *p != '/' && i < MAX_FILENAME_LEN - 1) {
+            out_parts[count][i++] = *p++;
+        }
+        out_parts[count][i] = '\0';
+        if (i > 0) count++;
+        while (*p == '/') p++;
+    }
+
+    return count;
+}
+
+/* Find a file/directory by path.
+ * path: null-terminated path like "/dir/subdir/file.txt"
+ * Returns index into fs_table, or -1 if not found.
+ * If parent_only is true, returns the parent directory of the last component.
+ */
+static int find_path(const char* path, int parent_only) {
+    char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+    int num_parts = split_path(path, parts, MAX_YAFS_FILES);
+
+    if (num_parts == 0) {
+        /* Root directory */
+        return -1;
+    }
+
+    int current = -1;  /* -1 means root */
+
+    /* Walk through all but the last component (directories) */
+    int last = parent_only ? num_parts - 1 : num_parts;
+    for (int i = 0; i < last; i++) {
+        int found = -1;
+        for (int j = 0; j < fs_file_count; j++) {
+            if (fs_table[j].used && fs_table[j].is_dir &&
+                strcmp(fs_table[j].name, parts[i]) == 0 &&
+                fs_table[j].parent_dir == current) {
+                found = j;
+                break;
+            }
+        }
+        if (found == -1) return -1;
+        current = found;
+    }
+
+    if (parent_only) {
+        return current;
+    }
+
+    /* Find the final component */
+    for (int j = 0; j < fs_file_count; j++) {
+        if (fs_table[j].used &&
+            strcmp(fs_table[j].name, parts[num_parts - 1]) == 0 &&
+            fs_table[j].parent_dir == current) {
+            return j;
+        }
+    }
+
+    return -1;
+}
+
+/* Ensure parent directories exist for a given path.
+ * Creates any missing directories along the path.
+ * Returns the index of the parent directory, or -1 on failure.
+ */
+static int ensure_parents(const char* path) {
+    char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+    int num_parts = split_path(path, parts, MAX_YAFS_FILES);
+
+    if (num_parts <= 1) return -1;  /* No parent directories needed */
+
+    int current = -1;
+    for (int i = 0; i < num_parts - 1; i++) {
+        /* Look for existing directory */
+        int found = -1;
+        for (int j = 0; j < fs_file_count; j++) {
+            if (fs_table[j].used && fs_table[j].is_dir &&
+                strcmp(fs_table[j].name, parts[i]) == 0 &&
+                fs_table[j].parent_dir == current) {
+                found = j;
+                break;
+            }
+        }
+
+        if (found == -1) {
+            /* Create the directory */
+            if (fs_file_count >= MAX_YAFS_FILES) return -1;
+            found = fs_file_count;
+            strcpy(fs_table[found].name, parts[i]);
+            fs_table[found].content[0] = '\0';
+            fs_table[found].size = 0;
+            fs_table[found].used = 1;
+            fs_table[found].is_vfat = 0;
+            fs_table[found].is_dir = 1;
+            fs_table[found].parent_dir = current;
+            fs_file_count++;
+        }
+        current = found;
+    }
+
+    return current;
+}
+
+/* ----------------------------------------------------------------------
+ * Flash wear leveling
+ * ---------------------------------------------------------------------- */
+
+static void wear_increment(void) {
+    wear_write_count++;
+}
+
+static unsigned int wear_get_offset(void) {
+    /* Alternate between primary and backup offset based on write count parity */
+    return (wear_write_count % 2) ? WEAR_BACKUP_OFFSET : WEAR_PRIMARY_OFFSET;
+}
+
+void pflash_write_byte(unsigned int offset, unsigned char val) {
     volatile unsigned char* flash = (volatile unsigned char*)STORAGE_FLASH_BASE;
     flash[offset] = 0x40;
     flash[offset] = val;
@@ -192,18 +328,21 @@ static void pflash_write_byte(unsigned int offset, unsigned char val) {
 }
 
 void vfs_sync_to_storage(void) {
-    volatile unsigned char* flash = (volatile unsigned char*)STORAGE_FLASH_BASE;
+    wear_increment();
+    unsigned int base_offset = wear_get_offset();
+
+    volatile unsigned char* flash = (volatile unsigned char*)((unsigned long)STORAGE_FLASH_BASE + base_offset);
 
     unsigned int magic = STORAGE_MAGIC;
     unsigned char* magic_ptr = (unsigned char*)&magic;
     for (unsigned int i = 0; i < sizeof(unsigned int); i++) {
-        if (flash[i] != magic_ptr[i]) pflash_write_byte(i, magic_ptr[i]);
+        if (flash[i] != magic_ptr[i]) pflash_write_byte(base_offset + i, magic_ptr[i]);
     }
 
     unsigned char* count_ptr = (unsigned char*)&fs_file_count;
     unsigned int count_offset = sizeof(unsigned int);
     for (unsigned int i = 0; i < sizeof(int); i++) {
-        if (flash[count_offset + i] != count_ptr[i]) pflash_write_byte(count_offset + i, count_ptr[i]);
+        if (flash[count_offset + i] != count_ptr[i]) pflash_write_byte(base_offset + count_offset + i, count_ptr[i]);
     }
 
     unsigned char* fs_ptr = (unsigned char*)fs_table;
@@ -211,17 +350,25 @@ void vfs_sync_to_storage(void) {
     unsigned int table_size = sizeof(file_record_t) * MAX_YAFS_FILES;
 
     for (unsigned int i = 0; i < table_size; i++) {
-        if (flash[table_offset + i] != fs_ptr[i]) pflash_write_byte(table_offset + i, fs_ptr[i]);
+        if (flash[table_offset + i] != fs_ptr[i]) pflash_write_byte(base_offset + table_offset + i, fs_ptr[i]);
     }
 }
 
 int vfs_load_from_storage(void) {
-    volatile storage_header_t* flash = (volatile storage_header_t*)STORAGE_FLASH_BASE;
-    if (flash->magic != STORAGE_MAGIC) return 0;
+    /* Try primary first, then backup */
+    for (int attempt = 0; attempt < 2; attempt++) {
+        unsigned int base_offset = (attempt == 0) ? WEAR_PRIMARY_OFFSET : WEAR_BACKUP_OFFSET;
+        volatile storage_header_t* flash = (volatile storage_header_t*)((unsigned long)STORAGE_FLASH_BASE + base_offset);
 
-    fs_file_count = flash->file_count;
-    for (int i = 0; i < MAX_YAFS_FILES; i++) fs_table[i] = flash->files[i];
-    return 1;
+        if (flash->magic == STORAGE_MAGIC) {
+            fs_file_count = flash->file_count;
+            for (int i = 0; i < MAX_YAFS_FILES; i++) fs_table[i] = flash->files[i];
+            wear_write_count = attempt;  /* Start wear leveling from this offset */
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 void init_filesystems(void) {
@@ -232,25 +379,29 @@ void init_filesystems(void) {
 
     fs_file_count = 0;
 
+    /* Root-level files */
     strcpy(fs_table[0].name, "motd.txt");
     strcpy(fs_table[0].content, "Welcome to RoxiP OS! comcow Compositor Engine Active.");
     fs_table[0].size = strlen(fs_table[0].content);
     fs_table[0].used = 1; fs_table[0].is_vfat = 0; fs_table[0].is_dir = 0;
+    fs_table[0].parent_dir = -1;
     fs_file_count++;
 
     strcpy(fs_table[1].name, "LongFileName_VFAT.sys");
     strcpy(fs_table[1].content, "vfat_enabled=true\nfat32_clusters=65536\nlfn_support=1");
     fs_table[1].size = strlen(fs_table[1].content);
     fs_table[1].used = 1; fs_table[1].is_vfat = 1; fs_table[1].is_dir = 0;
+    fs_table[1].parent_dir = -1;
     fs_file_count++;
 
     strcpy(fs_table[2].name, "history.txt");
     strcpy(fs_table[2].content, "");
     fs_table[2].size = 0;
     fs_table[2].used = 1; fs_table[2].is_vfat = 0; fs_table[2].is_dir = 0;
+    fs_table[2].parent_dir = -1;
     fs_file_count++;
 
-    log_boot_event("[OK] Persistent Flash formatted (YAFS1)");
+    log_boot_event("[OK] Persistent Flash formatted (YAFS1 with subdirectories)");
     vfs_sync_to_storage();
 }
 
@@ -289,20 +440,17 @@ const char* fs_read_file(const char* filename) {
             int_to_str(fs_file_count, num);
             strcpy(synthetic_buf, "Type: RoxiP Synthetic/PFlash YAFS (Yet Another File System)\nFile Count: ");
             strcpy(synthetic_buf + strlen(synthetic_buf), num);
-            strcpy(synthetic_buf + strlen(synthetic_buf), "\nMax Payload: 2 MB");
+            strcpy(synthetic_buf + strlen(synthetic_buf), "\nMax Payload: 2 MB\nWear Leveling: Enabled (dual-header rotation)");
             return synthetic_buf;
         } else if (strcmp(filename, "@pipe") == 0) {
             return pipe_buffer;
         }
     }
 
-    for (int i = 0; i < fs_file_count; i++) {
-        if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
-            if (fs_table[i].is_dir) return 0;
-            return fs_table[i].content;
-        }
-    }
-    return 0;
+    int idx = find_path(filename, 0);
+    if (idx == -1) return 0;
+    if (fs_table[idx].is_dir) return 0;
+    return fs_table[idx].content;
 }
 
 int fs_write_file_binary(const char* filename, const char* content, unsigned int size) {
@@ -311,8 +459,29 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
         size = MAX_FILE_CONTENT - 1;
     }
 
+    /* Resolve parent directory */
+    int parent = ensure_parents(filename);
+    if (parent == -1) {
+        /* Check if it's a root-level file */
+        char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+        int num_parts = split_path(filename, parts, MAX_YAFS_FILES);
+        if (num_parts == 1) {
+            parent = -1;
+        } else {
+            term_add_line("YAFS ERR [E_NOENT]: Parent directory not found.");
+            return 0;
+        }
+    }
+
+    /* Check if file already exists at this path */
+    char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+    int num_parts = split_path(filename, parts, MAX_YAFS_FILES);
+    const char* final_name = parts[num_parts - 1];
+
     for (int i = 0; i < fs_file_count; i++) {
-        if (fs_table[i].used && strcmp(fs_table[i].name, filename) == 0) {
+        if (fs_table[i].used && !fs_table[i].is_dir &&
+            strcmp(fs_table[i].name, final_name) == 0 &&
+            fs_table[i].parent_dir == parent) {
             if (fs_table[i].is_dir) {
                 term_add_line("YAFS ERR [E_ISDIR]: Target path is a directory.");
                 return 0;
@@ -325,15 +494,17 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
         }
     }
 
+    /* Create new file entry */
     if (fs_file_count < MAX_YAFS_FILES) {
         int idx = fs_file_count;
-        strcpy(fs_table[idx].name, filename);
+        strcpy(fs_table[idx].name, final_name);
         memcpy(fs_table[idx].content, content, size);
         fs_table[idx].content[size] = '\0';
         fs_table[idx].size = size;
         fs_table[idx].used = 1;
-        fs_table[idx].is_vfat = (strlen(filename) > 11) ? 1 : 0;
+        fs_table[idx].is_vfat = (strlen(final_name) > 11) ? 1 : 0;
         fs_table[idx].is_dir = 0;
+        fs_table[idx].parent_dir = parent;
         fs_file_count++;
         vfs_sync_to_storage();
         return 1;
@@ -348,24 +519,47 @@ int fs_write_file(const char* filename, const char* content) {
 }
 
 int fs_mkdir(const char* dirname) {
+    /* Resolve parent directory */
+    int parent = ensure_parents(dirname);
+    if (parent == -1) {
+        char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+        int num_parts = split_path(dirname, parts, MAX_YAFS_FILES);
+        if (num_parts == 1) {
+            parent = -1;
+        } else {
+            term_add_line("YAFS ERR [E_NOENT]: Parent directory not found.");
+            return 0;
+        }
+    }
+
+    char parts[MAX_YAFS_FILES][MAX_FILENAME_LEN];
+    int num_parts = split_path(dirname, parts, MAX_YAFS_FILES);
+    const char* final_name = parts[num_parts - 1];
+
+    /* Check if already exists */
     for (int i = 0; i < fs_file_count; i++) {
-        if (fs_table[i].used && strcmp(fs_table[i].name, dirname) == 0) {
+        if (fs_table[i].used && fs_table[i].is_dir &&
+            strcmp(fs_table[i].name, final_name) == 0 &&
+            fs_table[i].parent_dir == parent) {
             term_add_line("YAFS ERR [E_EXIST]: Directory or file already exists.");
             return 0;
         }
     }
+
     if (fs_file_count < MAX_YAFS_FILES) {
         int idx = fs_file_count;
-        strcpy(fs_table[idx].name, dirname);
+        strcpy(fs_table[idx].name, final_name);
         fs_table[idx].content[0] = '\0';
         fs_table[idx].size = 0;
         fs_table[idx].used = 1;
         fs_table[idx].is_vfat = 0;
         fs_table[idx].is_dir = 1;
+        fs_table[idx].parent_dir = parent;
         fs_file_count++;
         vfs_sync_to_storage();
         return 1;
     }
+
     term_add_line("YAFS ERR [E_NOSPACE]: File table capacity reached (16 max).");
     return 0;
 }

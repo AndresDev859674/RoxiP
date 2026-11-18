@@ -61,6 +61,14 @@ void strcpy(char* dest, const char* src) {
     dest[i] = '\0';
 }
 
+void strcat(char* dest, const char* src) {
+    int i = 0;
+    while (dest[i]) i++;
+    int j = 0;
+    while (src[j]) { dest[i++] = src[j++]; }
+    dest[i] = '\0';
+}
+
 void int_to_str(int num, char* str) {
     int i = 0;
     if (num == 0) { str[i++] = '0'; str[i] = '\0'; return; }
