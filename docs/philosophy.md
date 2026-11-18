@@ -6,7 +6,7 @@ RoxiP is built on three pillars:
 
 ### Universal
 
-"Universal" means the code is architecturally prepared for **any scenario** — not just the hardware it runs on today. If a developer forks RoxiP to run it on a PlayStation 2, a RISC-V microcontroller, or an entirely new SoC, the architecture should make that process straightforward and hassle-free.
+"Universal" means the code is architecturally prepared for **any scenario** — not just the hardware it runs on today. If a developer forks RoxiP to run it on a ESP32, a RISC-V microcontroller, or an entirely new SoC, the architecture should make that process straightforward and hassle-free.
 
 This universality is achieved through:
 

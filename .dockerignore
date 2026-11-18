@@ -1,0 +1,31 @@
+# .dockerignore - Files to exclude from Docker build context
+
+# Build artifacts
+builddir*
+build-*
+*.o
+*.elf
+*.bin
+*.img
+*.storage
+roxip-cli
+
+# Git
+.git/
+.gitignore
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+__pycache__/
+*.pyc
+*.log

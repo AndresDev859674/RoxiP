@@ -1,0 +1,86 @@
+# docker-compose.yml - RoxiP Docker orchestration
+#
+# Usage:
+#   docker-compose build                 # Build all board images
+#   docker-compose run versatilepb       # Build VersatilePB in container
+#   docker-compose run rockchip          # Build Rockchip in container
+#   docker-compose run amlogic           # Build Amlogic in container
+#   docker-compose run riscv-virt        # Build RISC-V virt in container
+#   docker-compose run qemu              # Build + run QEMU (needs --privileged)
+#
+# Note: QEMU inside Docker requires --privileged or KVM device access.
+# Use: docker-compose run --privileged qemu
+
+services:
+  roxip-base:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/home/roxip/roxip:cached
+    working_dir: /home/roxip/roxip
+    tty: true
+    stdin_open: true
+
+  versatilepb:
+    extends:
+      file: docker-compose.yml
+      service: roxip-base
+    build:
+      args:
+        BOARD: versatilepb
+    command: make img
+    labels:
+      roxip.board: versatilepb
+      roxip.cpu: arm926ej-s
+
+  rockchip:
+    extends:
+      file: docker-compose.yml
+      service: roxip-base
+    build:
+      args:
+        BOARD: rockchip
+    command: make rockchip img
+    labels:
+      roxip.board: rockchip
+      roxip.cpu: cortex-a7
+
+  amlogic:
+    extends:
+      file: docker-compose.yml
+      service: roxip-base
+    build:
+      args:
+        BOARD: amlogic
+    command: make amlogic img
+    labels:
+      roxip.board: amlogic
+      roxip.cpu: cortex-a53
+
+  riscv-virt:
+    extends:
+      file: docker-compose.yml
+      service: roxip-base
+    build:
+      args:
+        BOARD: riscv-virt
+    command: make riscv-virt img
+    labels:
+      roxip.board: riscv-virt
+      roxip.cpu: rv64gc
+
+  qemu:
+    extends:
+      file: docker-compose.yml
+      service: roxip-base
+    build:
+      args:
+        BOARD: versatilepb
+    command: make img-run
+    privileged: true
+    devices:
+      - /dev/kvm:/dev/kvm
+    labels:
+      roxip.board: versatilepb
+      roxip.cpu: arm926ej-s

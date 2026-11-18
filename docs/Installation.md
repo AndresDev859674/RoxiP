@@ -30,6 +30,24 @@ make riscv-virt     # builds for RISC-V virt
 make run            # runs in QEMU
 ```
 
+### Or with Docker (no host dependencies needed)
+
+If you have Docker installed, you can build and run RoxiP without installing
+any cross-compilers, Meson, Ninja, or QEMU on your host:
+
+```bash
+# 1. Build the Docker image
+docker build -t roxip .
+
+# 2. Build RoxiP (VersatilePB default)
+docker run --rm -it -v $(pwd):/home/roxip/roxip roxip make img
+
+# 3. Run in QEMU (needs --privileged)
+docker run --rm -it --privileged -v $(pwd):/home/roxip/roxip roxip make run
+```
+
+See `docs/docker.md` for full Docker documentation.
+
 ## Project Overview
 
 | Aspect | Description |
