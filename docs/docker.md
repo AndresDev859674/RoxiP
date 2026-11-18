@@ -1,4 +1,4 @@
-# i need docker! but RoxiP has it!
+# Introduction to Docker
 
 Docker lets you build and test RoxiP without installing any cross-compilers,
 Meson, Ninja, or QEMU on your host machine. Everything you need is inside the
@@ -8,7 +8,7 @@ container.
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Container image with all build dependencies |
+| `Dockerfile` | Container image with all build dependencies (Alpine Linux) |
 | `.dockerignore` | Files excluded from the Docker build context |
 | `docker-compose.yml` | Pre-configured services for each board |
 
@@ -18,12 +18,32 @@ container.
 - For QEMU emulation inside Docker: `--privileged` or KVM device access
   (`/dev/kvm`)
 
+## Architecture-Specific Images
+
+RoxiP supports both ARM and RISC-V boards. To keep the image small, build only
+the toolchain you need:
+
+```bash
+# ARM boards (versatilepb, rockchip, amlogic)
+docker build --build-arg TARGET_ARCH=arm -t roxip-arm .
+
+# RISC-V board (riscv-virt)
+docker build --build-arg TARGET_ARCH=riscv -t roxip-riscv .
+```
+
+This avoids downloading the RISC-V toolchain for ARM builds (and vice versa),
+keeping the image as small as possible.
+
 ## Quick Start
 
 ### 1. Build the Docker image
 
 ```bash
+# ARM (default)
 docker build -t roxip .
+
+# or explicitly
+docker build --build-arg TARGET_ARCH=arm -t roxip-arm .
 ```
 
 ### 2. Build RoxiP for a board
@@ -46,10 +66,11 @@ docker run --rm -it -v $(pwd):/home/roxip/roxip roxip make rockchip img
 docker run --rm -it -v $(pwd):/home/roxip/roxip roxip make amlogic img
 ```
 
-**RISC-V virt:**
+**RISC-V virt (requires riscv image):**
 
 ```bash
-docker run --rm -it -v $(pwd):/home/roxip/roxip roxip make riscv-virt img
+docker build --build-arg TARGET_ARCH=riscv -t roxip-riscv .
+docker run --rm -it -v $(pwd):/home/roxip/roxip roxip-riscv make riscv-virt img
 ```
 
 The `-v $(pwd):/home/roxip/roxip` flag mounts your current directory into the
@@ -61,11 +82,11 @@ your host after the container exits.
 QEMU inside Docker needs privileged access:
 
 ```bash
-# VersatilePB
+# VersatilePB (ARM)
 docker run --rm -it --privileged -v $(pwd):/home/roxip/roxip roxip make run
 
-# RISC-V virt (with OpenSBI)
-docker run --rm -it --privileged -v $(pwd):/home/roxip/roxip roxip make riscv-virt run
+# RISC-V virt
+docker run --rm -it --privileged -v $(pwd):/home/roxip/roxip roxip-riscv make riscv-virt run
 ```
 
 Press **Ctrl+C** to stop QEMU.
@@ -75,8 +96,11 @@ Press **Ctrl+C** to stop QEMU.
 If you have `docker-compose` installed, you can use the predefined services:
 
 ```bash
-# Build all board images
+# Build the default (ARM) image
 docker-compose build
+
+# Build RISC-V image
+TARGET_ARCH=riscv docker-compose build
 
 # Build a specific board
 docker-compose run versatilepb
@@ -90,11 +114,14 @@ docker-compose run --privileged qemu
 
 ## Build Arguments
 
-You can override the default board at build time:
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `TARGET_ARCH` | `arm` | `arm` for ARM boards, `riscv` for RISC-V virt |
+
+Example:
 
 ```bash
-docker build --build-arg BOARD=rockchip -t roxip-rockchip .
-docker run --rm -it -v $(pwd):/home/roxip/roxip roxip-rockchip make img
+docker build --build-arg TARGET_ARCH=riscv -t roxip-riscv .
 ```
 
 ## Output Files
@@ -112,7 +139,7 @@ After building, you'll find these artifacts in your project directory:
 ## Example: Full Workflow
 
 ```bash
-# 1. Build image
+# 1. Build image (ARM)
 docker build -t roxip .
 
 # 2. Build VersatilePB image
@@ -133,6 +160,7 @@ docker run --rm -it --privileged -v $(pwd):/home/roxip/roxip roxip make run
 | Permission denied on `/dev/kvm` | Add `--privileged` or add your user to the `kvm` group |
 | Build artifacts owned by root | The container runs as user `roxip`; mounted volumes should match your host UID |
 | QEMU fails to start | Ensure KVM is enabled: `ls /dev/kvm` should exist |
+| Package not found (Alpine) | Ensure you're using `alpine:3.19` or newer; some packages are in `community` repo |
 
 ## License
 

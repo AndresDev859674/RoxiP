@@ -1,12 +1,13 @@
 # docker-compose.yml - RoxiP Docker orchestration
 #
 # Usage:
-#   docker-compose build                 # Build all board images
-#   docker-compose run versatilepb       # Build VersatilePB in container
-#   docker-compose run rockchip          # Build Rockchip in container
-#   docker-compose run amlogic           # Build Amlogic in container
-#   docker-compose run riscv-virt        # Build RISC-V virt in container
-#   docker-compose run qemu              # Build + run QEMU (needs --privileged)
+#   docker-compose build                    # Build default ARM image
+#   TARGET_ARCH=riscv docker-compose build  # Build RISC-V image
+#   docker-compose run versatilepb          # Build VersatilePB in container
+#   docker-compose run rockchip             # Build Rockchip in container
+#   docker-compose run amlogic              # Build Amlogic in container
+#   docker-compose run riscv-virt           # Build RISC-V virt in container
+#   docker-compose run qemu                 # Build + run QEMU (needs --privileged)
 #
 # Note: QEMU inside Docker requires --privileged or KVM device access.
 # Use: docker-compose run --privileged qemu
@@ -16,6 +17,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - TARGET_ARCH=${TARGET_ARCH:-arm}
     volumes:
       - .:/home/roxip/roxip:cached
     working_dir: /home/roxip/roxip
@@ -26,9 +29,6 @@ services:
     extends:
       file: docker-compose.yml
       service: roxip-base
-    build:
-      args:
-        BOARD: versatilepb
     command: make img
     labels:
       roxip.board: versatilepb
@@ -38,9 +38,6 @@ services:
     extends:
       file: docker-compose.yml
       service: roxip-base
-    build:
-      args:
-        BOARD: rockchip
     command: make rockchip img
     labels:
       roxip.board: rockchip
@@ -50,9 +47,6 @@ services:
     extends:
       file: docker-compose.yml
       service: roxip-base
-    build:
-      args:
-        BOARD: amlogic
     command: make amlogic img
     labels:
       roxip.board: amlogic
@@ -64,7 +58,7 @@ services:
       service: roxip-base
     build:
       args:
-        BOARD: riscv-virt
+        - TARGET_ARCH=riscv
     command: make riscv-virt img
     labels:
       roxip.board: riscv-virt
@@ -74,9 +68,6 @@ services:
     extends:
       file: docker-compose.yml
       service: roxip-base
-    build:
-      args:
-        BOARD: versatilepb
     command: make img-run
     privileged: true
     devices:

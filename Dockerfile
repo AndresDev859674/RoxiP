@@ -1,43 +1,55 @@
-# Dockerfile - RoxiP bare-metal OS build environment
+# Dockerfile - RoxiP bare-metal OS build environment (Alpine Linux)
 #
 # Builds RoxiP for ARM (VersatilePB, Rockchip, Amlogic) and RISC-V (virt) boards
 # using Meson + Ninja inside a container.
 #
-# Usage:
-#   docker build -t roxip .
-#   docker run --rm -it -v $(pwd):/roxip roxip
+# Build for a specific architecture to avoid downloading unnecessary packages:
 #
-# Build a specific board:
-#   docker build --build-arg BOARD=rockchip -t roxip-rockchip .
-#   docker run --rm -it -v $(pwd):/roxip roxip-rockchip make rockchip img
+#   # ARM boards (versatilepb, rockchip, amlogic)
+#   docker build --build-arg TARGET_ARCH=arm -t roxip-arm .
+#   docker run --rm -it -v $(pwd):/roxip roxip-arm make rockchip img
+#
+#   # RISC-V board (riscv-virt)
+#   docker build --build-arg TARGET_ARCH=riscv -t roxip-riscv .
+#   docker run --rm -it -v $(pwd):/roxip roxip-riscv make riscv-virt img
 #
 # Run in QEMU (requires --privileged or --device /dev/kvm):
-#   docker run --rm -it --privileged -v $(pwd):/roxip roxip make run
+#   docker run --rm -it --privileged -v $(pwd):/roxip roxip-arm make run
 
-FROM archlinux:latest
+FROM alpine:3.19
 
-# Avoid interactive prompts during package installation
-ENV PACMAN_ARGS="--noconfirm"
-ENV BOARD=versatilepb
-ENV BUILD_CLI=0
+ARG TARGET_ARCH=arm
 
-# Install build dependencies
-RUN pacman -Syu ${PACMAN_ARGS} && \
-    pacman -S ${PACMAN_ARGS} \
-      base-devel \
+# Avoid interactive prompts
+ENV APK_ARGS="--no-cache"
+
+# Install core build tools (common to all architectures)
+RUN apk add ${APK_ARGS} \
+      alpine-sdk \
+      bash \
+      coreutils \
+      file \
       git \
+      make \
       meson \
       ninja \
-      arm-none-eabi-gcc \
-      riscv64-elf-gcc \
-      riscv64-elf-binutils \
-      qemu-system-arm \
-      qemu-system-riscv \
-      arch-install-scripts && \
-    pacman -Scc ${PACMAN_ARGS}
+      python3 \
+      which
 
-# Create a non-root user for building (avoids permission issues with mounted volumes)
-RUN useradd -m -s /bin/bash roxip && \
+# Install architecture-specific toolchain and emulator
+RUN if [ "${TARGET_ARCH}" = "riscv" ]; then \
+      apk add ${APK_ARGS} \
+        riscv64-elf-gcc \
+        riscv64-elf-binutils \
+        qemu-system-riscv; \
+    else \
+      apk add ${APK_ARGS} \
+        arm-none-eabi-gcc \
+        qemu-system-arm; \
+    fi
+
+# Create a non-root user for building
+RUN adduser -D -s /bin/bash roxip && \
     mkdir -p /home/roxip/roxip && \
     chown -R roxip:roxip /home/roxip
 
@@ -46,13 +58,8 @@ WORKDIR /home/roxip/roxip
 # Copy source code (respects .dockerignore)
 COPY --chown=roxip:roxip . .
 
-# Default command: show help
+# Default command
 CMD ["bash"]
 
-# Build arguments
-ARG BOARD=versatilepb
-ARG BUILD_CLI=0
-
 # Environment variables for the build
-ENV BOARD=${BOARD}
-ENV BUILD_CLI=${BUILD_CLI}
+ENV TARGET_ARCH=${TARGET_ARCH}
