@@ -166,6 +166,11 @@ void kmain(void) {
     init_kmi_keyboard();
     init_kmi_mouse();
 
+#ifdef NETWORK_ENABLED
+    dbg_log("[11b] Initializing Network Connection...");
+    network_boot_connect();
+#endif
+
     dbg_log("[12/12] Launching Interactive Bootloader...");
     run_bootloader();
 

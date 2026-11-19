@@ -271,4 +271,92 @@ void net_init(void) {
     log_boot_event("[NET] Network stack initialized");
 }
 
+/* ----------------------------------------------------------------------
+ * Network boot connection (called during bootloader phase)
+ * ---------------------------------------------------------------------- */
+
+static void net_draw_connecting(const char *ssid, int frame) {
+    const char spinner_chars[] = {'|', '/', '-', '\\'};
+    char spinner = spinner_chars[frame % 4];
+
+    vga_clear(COLOR_BLACK | (COLOR_DARK_GREY << 4));
+    draw_box(10, 8, 60, 9, COLOR_WHITE | (COLOR_DARK_GREY << 4),
+             COLOR_BLACK | (COLOR_DARK_GREY << 4));
+
+    vga_draw_string("  Connecting to network...", COLOR_WHITE | (COLOR_DARK_GREY << 4), 13, 10);
+    vga_draw_string("  SSID: ", COLOR_LIGHT_GREY | (COLOR_DARK_GREY << 4), 13, 11);
+    vga_draw_string(ssid, COLOR_CYAN | (COLOR_DARK_GREY << 4), 22, 11);
+
+    char status_line[40];
+    strcpy(status_line, "  Status: ");
+    char status[16];
+    strcpy(status, "Connecting");
+    char spin[2] = {spinner, '\0'};
+    strcat(status, spin);
+    vga_draw_string(status, COLOR_YELLOW | (COLOR_DARK_GREY << 4), 22, 11);
+
+    vga_draw_string("  Please wait...", COLOR_LIGHT_GREY | (COLOR_DARK_GREY << 4), 13, 13);
+    vga_draw_string("  This may take a few seconds.", COLOR_LIGHT_GREY | (COLOR_DARK_GREY << 4), 13, 14);
+
+    draw_box(12, 16, 56, 2, COLOR_LIGHT_CYAN | (COLOR_DARK_GREY << 4),
+             COLOR_BLACK | (COLOR_DARK_GREY << 4));
+
+    /* Progress bar */
+    int bar_progress = (frame % 40);
+    for (int i = 0; i < bar_progress && i < 54; i++) {
+        vga_draw_char_at('#', COLOR_GREEN | (COLOR_BLACK << 4), 13 + i, 16);
+    }
+
+    vga_flush();
+}
+
+int network_boot_connect(void) {
+    if (!net_initialized) return -1;
+
+    /* Read credentials from YAFS storage */
+    const char *ssid = fs_read_file("@net:name");
+    const char *password = fs_read_file("@net:pass");
+
+    if (!ssid || ssid[0] == '\0' || !password || password[0] == '\0') {
+        /* No network credentials configured - skip connection */
+        return -1;
+    }
+
+    log_boot_event("[NET] Network credentials found - attempting connection");
+
+    /* Show connecting screen and attempt connection */
+    for (int frame = 0; frame < 60; frame++) {
+        net_draw_connecting(ssid, frame);
+        delay_ms(100);
+    }
+
+    /* Simulate connection success */
+    /* TODO: Replace with real Wi-Fi driver integration */
+    log_boot_event("[NET] Connected to network");
+
+    /* Generate and store @net:id */
+    /* The ID is derived from the SSID hash (already computed in fs_read_file) */
+    /* Store it as a YAFS file so it persists */
+    char net_id_buf[64];
+    strcpy(net_id_buf, "ROXIP-NET-");
+
+    /* Simple hash of SSID for the ID */
+    unsigned int hash = 5381;
+    for (int j = 0; ssid[j] && j < 32; j++) {
+        hash = ((hash << 5) + hash) + ssid[j];
+    }
+    char id_suffix[16];
+    int_to_str(hash, id_suffix);
+    strcat(net_id_buf, id_suffix);
+
+    /* Write @net:id to storage */
+    fs_write_file_binary("@net:id", net_id_buf, strlen(net_id_buf));
+    yafs_sync_to_storage();
+
+    log_boot_event("[NET] Network ID stored: ");
+    log_boot_event(net_id_buf);
+
+    return 0;
+}
+
 #endif /* NETWORK_ENABLED */

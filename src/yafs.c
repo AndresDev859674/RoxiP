@@ -327,7 +327,7 @@ void pflash_write_byte(unsigned int offset, unsigned char val) {
     flash[offset] = 0xFF;
 }
 
-void vfs_sync_to_storage(void) {
+void yafs_sync_to_storage(void) {
     wear_increment();
     unsigned int base_offset = wear_get_offset();
 
@@ -354,7 +354,7 @@ void vfs_sync_to_storage(void) {
     }
 }
 
-int vfs_load_from_storage(void) {
+int yafs_load_from_storage(void) {
     /* Try primary first, then backup */
     for (int attempt = 0; attempt < 2; attempt++) {
         unsigned int base_offset = (attempt == 0) ? WEAR_PRIMARY_OFFSET : WEAR_BACKUP_OFFSET;
@@ -372,7 +372,7 @@ int vfs_load_from_storage(void) {
 }
 
 void init_filesystems(void) {
-    if (vfs_load_from_storage()) {
+    if (yafs_load_from_storage()) {
         log_boot_event("[OK] Persistent YAFS mounted from roxip.storage");
         return;
     }
@@ -402,7 +402,7 @@ void init_filesystems(void) {
     fs_file_count++;
 
     log_boot_event("[OK] Persistent Flash formatted (YAFS1 with subdirectories)");
-    vfs_sync_to_storage();
+    yafs_sync_to_storage();
 }
 
 const char* fs_read_file(const char* filename) {
@@ -444,6 +444,54 @@ const char* fs_read_file(const char* filename) {
             return synthetic_buf;
         } else if (strcmp(filename, "@pipe") == 0) {
             return pipe_buffer;
+        } else if (strncmp(filename, "@net:", 5) == 0) {
+            const char *suffix = filename + 5;
+
+            if (strcmp(suffix, "name") == 0) {
+                /* Return stored Wi-Fi network name (SSID) */
+                for (int i = 0; i < fs_file_count; i++) {
+                    if (fs_table[i].used && strcmp(fs_table[i].name, "@net:name") == 0) {
+                        return fs_table[i].content;
+                    }
+                }
+                strcpy(synthetic_buf, "");
+                return synthetic_buf;
+            } else if (strcmp(suffix, "pass") == 0) {
+                /* Return stored Wi-Fi password */
+                for (int i = 0; i < fs_file_count; i++) {
+                    if (fs_table[i].used && strcmp(fs_table[i].name, "@net:pass") == 0) {
+                        return fs_table[i].content;
+                    }
+                }
+                strcpy(synthetic_buf, "");
+                return synthetic_buf;
+            } else if (strcmp(suffix, "id") == 0) {
+                /* Return network ID - generated from stored credentials */
+                for (int i = 0; i < fs_file_count; i++) {
+                    if (fs_table[i].used && strcmp(fs_table[i].name, "@net:id") == 0) {
+                        return fs_table[i].content;
+                    }
+                }
+                /* Generate ID from network name if available */
+                strcpy(synthetic_buf, "ROXIP-NET-");
+                char net_name[64];
+                net_name[0] = '\0';
+                for (int i = 0; i < fs_file_count; i++) {
+                    if (fs_table[i].used && strcmp(fs_table[i].name, "@net:name") == 0) {
+                        strcpy(net_name, fs_table[i].content);
+                        break;
+                    }
+                }
+                /* Simple hash of network name */
+                unsigned int hash = 5381;
+                for (int j = 0; net_name[j] && j < 32; j++) {
+                    hash = ((hash << 5) + hash) + net_name[j];
+                }
+                char id_buf[16];
+                int_to_str(hash, id_buf);
+                strcpy(synthetic_buf + strlen(synthetic_buf), id_buf);
+                return synthetic_buf;
+            }
         }
     }
 
@@ -489,7 +537,7 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
             memcpy(fs_table[i].content, content, size);
             fs_table[i].content[size] = '\0';
             fs_table[i].size = size;
-            vfs_sync_to_storage();
+            yafs_sync_to_storage();
             return 1;
         }
     }
@@ -506,7 +554,7 @@ int fs_write_file_binary(const char* filename, const char* content, unsigned int
         fs_table[idx].is_dir = 0;
         fs_table[idx].parent_dir = parent;
         fs_file_count++;
-        vfs_sync_to_storage();
+        yafs_sync_to_storage();
         return 1;
     }
 
@@ -556,7 +604,7 @@ int fs_mkdir(const char* dirname) {
         fs_table[idx].is_dir = 1;
         fs_table[idx].parent_dir = parent;
         fs_file_count++;
-        vfs_sync_to_storage();
+        yafs_sync_to_storage();
         return 1;
     }
 

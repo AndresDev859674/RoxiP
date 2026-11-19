@@ -233,7 +233,7 @@ void system_reboot(void);
 
 /* YAFS Prototypes */
 const char* fs_read_file(const char* filename);
-void YAFS_sync_to_storage(void);
+void yafs_sync_to_storage(void);
 int YAFS_load_from_storage(void);
 void init_filesystems(void);
 int fs_write_file(const char* filename, const char* content);

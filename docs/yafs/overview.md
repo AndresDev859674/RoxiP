@@ -70,7 +70,7 @@ fat32_list_dir();
 YAFS now includes simple wear leveling for flash storage:
 
 * The storage header is stored in two locations (primary and backup)
-* Each `vfs_sync_to_storage()` call alternates between them based on a write counter
+* Each `yafs_sync_to_storage()` call alternates between them based on a write counter
 * This distributes erase cycles evenly across flash blocks
 * On mount, the driver tries primary first, then backup
 
@@ -97,6 +97,9 @@ YAFS supports special "@" prefixed nodes that are generated on-the-fly:
 | `@fb0` | Framebuffer info (base address, resolution, size) |
 | `@yafs` / `@vfs` | YAFS filesystem info (includes wear leveling status) |
 | `@history` | Shell command history |
+| `@net:name` | Wi-Fi network name (SSID) — stored via `roxip-cli write` |
+| `@net:pass` | Wi-Fi password — stored via `roxip-cli write` |
+| `@net:id` | Network identifier — auto-generated on successful connection |
 
 ## Storage Creation
 

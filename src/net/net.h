@@ -138,6 +138,9 @@ int ip_output(net_if_t *dev, uint8_t protocol, uint32_t dst_ip, const uint8_t *p
 /* Network initialization */
 void net_init(void);
 
+/* Network boot connection (called during bootloader phase) */
+int network_boot_connect(void);
+
 /* Helpers */
 uint16_t net_htons(uint16_t val);
 uint32_t net_htonl(uint32_t val);
