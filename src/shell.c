@@ -1,6 +1,10 @@
 #include "kernel.h"
 #include "firmware.h"
 
+#ifdef NETWORK_ENABLED
+#include "net.h"
+#endif
+
 char cmd_history[MAX_CMD_HIST][128];
 int hist_count = 0;
 
@@ -592,6 +596,9 @@ void execute_command(const char* cmd) {
         else term_add_line("YAFS: Synthetic node not found");
     }
     else if (strcmp(cmd, "ps") == 0) execute_ps();
+#ifdef NETWORK_ENABLED
+    else if (strcmp(cmd, "net") == 0 || strcmp(cmd, "network") == 0) network_print_status();
+#endif
     else if (strcmp(cmd, "vfm") == 0) {
         vfm_selected_index = 0;
         current_mode = MODE_VFM;
@@ -625,7 +632,45 @@ void execute_command(const char* cmd) {
         if (mode_id >= 1 && mode_id <= 4) { comcow_set_mode(mode_id); term_add_line("comcow: Display mode switched successfully."); }
         else term_add_line("comcow: Invalid mode_id. Type 'comcow modes'");
     }
-    else if (strcmp(cmd, "echo") == 0) term_add_line("Usage: echo <text>");
+    else if (strcmp(cmd, "echo") == 0) term_add_line("Usage: echo <text> | echo @net:name \"SSID\"");
+    else if (strncmp(cmd, "echo @net:", 10) == 0) {
+        /* echo @net:name "MyWiFi"  /  echo @net:pass "secret"
+         * Writes a network credential node directly from the shell. */
+        const char *arg = cmd + 5;
+        int node_end = 0;
+        while (arg[node_end] && arg[node_end] != ' ') node_end++;
+
+        char node[MAX_FILENAME_LEN];
+        int n = node_end < MAX_FILENAME_LEN - 1 ? node_end : MAX_FILENAME_LEN - 1;
+        for (int i = 0; i < n; i++) node[i] = arg[i];
+        node[n] = '\0';
+
+        const char *value = arg + node_end;
+        while (*value == ' ') value++;
+
+        int vlen = strlen(value);
+        if (vlen >= 2 && value[0] == '"' && value[vlen - 1] == '"') {
+            value++;
+            vlen -= 2;
+        }
+
+        static char val[MAX_FILE_CONTENT];
+        int vi = 0;
+        for (; vi < vlen && vi < MAX_FILE_CONTENT - 1; vi++) val[vi] = value[vi];
+        val[vi] = '\0';
+
+        if (strcmp(node, "@net:id") == 0) {
+            term_add_line("YAFS: @net:id is generated at boot and is read-only.");
+        } else if (val[0] == '\0') {
+            const char *current = fs_read_file(node);
+            term_add_line(current && current[0] ? current : "(empty)");
+        } else if (fs_write_file(node, val)) {
+            term_add_line("FS: Network node updated.");
+        } else {
+            term_add_line("FS Error: Cannot write network node.");
+        }
+        return;
+    }
     else if (strncmp(cmd, "echo ", 5) == 0) {
         const char* echo_arg = cmd + 5; int redirect_pos = -1;
         for (int i = 0; echo_arg[i] != '\0'; i++) if (echo_arg[i] == '>') { redirect_pos = i; break; }
@@ -805,6 +850,10 @@ void execute_command(const char* cmd) {
     }
     else if (strcmp(cmd, "help") == 0) {
         term_add_line("desk, fetch, ps, sh, vfm, zcatcher, lsblk, comcow, ztop, mem, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, set, unset, env, clear, reboot, shutdown, panic");
+        term_add_line("Files: echo <text> | echo @net:name \"SSID\" | echo @net:pass \"key\"");
+#ifdef NETWORK_ENABLED
+        term_add_line("Network: net (status; reads @net:name / @net:id)");
+#endif
         term_add_line("");
         term_add_line("Graphics : floatcube, colors");
     }

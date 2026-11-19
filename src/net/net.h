@@ -140,6 +140,7 @@ void net_init(void);
 
 /* Network boot connection (called during bootloader phase) */
 int network_boot_connect(void);
+void network_print_status(void);
 
 /* Helpers */
 uint16_t net_htons(uint16_t val);

@@ -168,7 +168,9 @@ void kmain(void) {
 
 #ifdef NETWORK_ENABLED
     dbg_log("[11b] Initializing Network Connection...");
-    network_boot_connect();
+    if (network_boot_connect() != 0) {
+        dbg_log("     Network not connected - booting offline.");
+    }
 #endif
 
     dbg_log("[12/12] Launching Interactive Bootloader...");

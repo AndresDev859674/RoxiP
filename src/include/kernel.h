@@ -240,6 +240,9 @@ int fs_write_file(const char* filename, const char* content);
 int fs_write_file_binary(const char* filename, const char* content, unsigned int size);
 int fs_mkdir(const char* dirname);
 
+/* @net node support (kernel-internal, bypasses the read-only @net:id guard) */
+int net_store_id(const char* id);
+
 void execute_tar(const char* args);
 int unpack_targz_in_ram(const unsigned char* src, unsigned int src_len);
 

@@ -17,6 +17,7 @@ The kernel boots in 12 stages:
 | 09 | `init_filesystems()` — mount YAFS from `roxip.storage` | `src/yafs.c` |
 | 10 | `init_comcow()` — display compositor engine | `src/graphics.c` |
 | 11 | `init_kmi_keyboard/mouse()` — PS/2 input (ARM VersatilePB only) | `src/drivers/input.c` |
+| 11b | `network_boot_connect()` — if `@net:name`/`@net:pass` exist, show the connecting screen, bring the link up and store `@net:id` (networking builds only) | `src/net/net.c` |
 | 12 | `run_bootloader()` — 10-second interactive boot menu | `src/kernel.c` |
 
 After the bootloader, the main loop polls input, redraws the current view, and processes shell commands.
