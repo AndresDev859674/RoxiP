@@ -52,6 +52,11 @@ COMMON_FLAGS = $(ABI_FLAGS) $(CFLAGS_BASE)
 
 ifeq ($(NETWORK_ENABLED),1)
     COMMON_FLAGS += -DNETWORK_ENABLED -DNET_ARP -DNET_IP -DNET_ICMP -DNET_UDP
+    # Versatile/PB has an onboard SMC91C111 at a fixed MMIO address; other
+    # boards keep the (currently placeholder) NE2000 driver.
+    ifeq ($(BOARD),versatilepb)
+        COMMON_FLAGS += -DNET_SMC91C111
+    endif
 endif
 
 ifeq ($(BOARD),riscv-virt)
@@ -77,11 +82,15 @@ DRIVER_OBJS = src/drivers/uart.o \
 
 ifeq ($(NETWORK_ENABLED),1)
     DRIVER_OBJS += src/drivers/ne2000.o
+    ifeq ($(BOARD),versatilepb)
+        DRIVER_OBJS += src/drivers/smc91c111.o
+    endif
     NET_OBJS = src/net/net.o \
                src/net/arp.o \
                src/net/ip.o \
                src/net/icmp.o \
-               src/net/udp.o
+               src/net/udp.o \
+               src/net/tftp.o
 else
     NET_OBJS =
 endif

@@ -153,7 +153,11 @@ void kmain(void) {
 #ifdef NETWORK_ENABLED
     dbg_log("[08c] Initializing Network Stack...");
     net_init();
+#ifdef NET_SMC91C111
+    smc91c111_init_driver();
+#else
     ne2000_init_driver();
+#endif
 #endif
 
     dbg_log("[09/12] Initializing comcow Compositor...");

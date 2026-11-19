@@ -598,6 +598,39 @@ void execute_command(const char* cmd) {
     else if (strcmp(cmd, "ps") == 0) execute_ps();
 #ifdef NETWORK_ENABLED
     else if (strcmp(cmd, "net") == 0 || strcmp(cmd, "network") == 0) network_print_status();
+    else if (strcmp(cmd, "net up") == 0) {
+        net_if_t *iface = net_if_get_by_name("eth0");
+        if (!iface) term_add_line("net: no network interface available");
+        else if (iface->state == NET_IF_UP) term_add_line("net: interface already up");
+        else if (net_if_up(iface) == 0) term_add_line("net: interface up");
+        else term_add_line("net: could not bring the interface up");
+    }
+    else if (strcmp(cmd, "ping") == 0) term_add_line("Usage: ping <ip-address>");
+    else if (strncmp(cmd, "ping ", 5) == 0) net_ping(cmd + 5);
+    else if (strcmp(cmd, "tftp") == 0)
+        term_add_line("Usage: tftp <server-ip> <remote-file> [local-file]");
+    else if (strncmp(cmd, "tftp ", 5) == 0) {
+        char server[64], remote[200], local[MAX_FILENAME_LEN];
+        const char *arg = cmd + 5;
+        unsigned int idx;
+
+        while (*arg == ' ') arg++;
+        idx = 0;
+        while (*arg && *arg != ' ' && idx < sizeof(server) - 1) server[idx++] = *arg++;
+        server[idx] = '\0';
+
+        while (*arg == ' ') arg++;
+        idx = 0;
+        while (*arg && *arg != ' ' && idx < sizeof(remote) - 1) remote[idx++] = *arg++;
+        remote[idx] = '\0';
+
+        while (*arg == ' ') arg++;
+        idx = 0;
+        while (*arg && idx < sizeof(local) - 1) local[idx++] = *arg++;
+        local[idx] = '\0';
+
+        tftp_get(server, remote, local[0] ? local : 0);
+    }
 #endif
     else if (strcmp(cmd, "vfm") == 0) {
         vfm_selected_index = 0;
@@ -852,7 +885,7 @@ void execute_command(const char* cmd) {
         term_add_line("desk, fetch, ps, sh, vfm, zcatcher, lsblk, comcow, ztop, mem, ls, cd, pwd, cat, micro, mkdir, stat, xxd, disasm, set, unset, env, clear, reboot, shutdown, panic");
         term_add_line("Files: echo <text> | echo @net:name \"SSID\" | echo @net:pass \"key\"");
 #ifdef NETWORK_ENABLED
-        term_add_line("Network: net (status; reads @net:name / @net:id)");
+        term_add_line("Network: net | net up | ping <ip> | tftp <ip> <file> [local]");
 #endif
         term_add_line("");
         term_add_line("Graphics : floatcube, colors");

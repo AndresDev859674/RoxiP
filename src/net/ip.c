@@ -29,14 +29,18 @@ int ip_input(net_if_t *dev, const uint8_t *buf, uint32_t len) {
 
     /* Verify checksum (simplified - skip for now) */
 
+    /* Hand the transport segment (not the IP header) to the next layer. */
+    const uint8_t *transport = buf + sizeof(eth_hdr_t) + ihl;
+    uint16_t transport_len = (tot_len > ihl) ? (uint16_t)(tot_len - ihl) : 0;
+
     /* Process based on protocol */
     if (ip->protocol == 1) { /* ICMP */
 #ifdef NET_ICMP
-        return icmp_input(dev, buf + sizeof(eth_hdr_t), ihl, tot_len);
+        return icmp_input(dev, transport, transport_len, ip->src);
 #endif
     } else if (ip->protocol == 17) { /* UDP */
 #ifdef NET_UDP
-        return udp_input(dev, buf + sizeof(eth_hdr_t), ihl, tot_len);
+        return udp_input(dev, transport, transport_len, ip->src);
 #endif
     }
 
@@ -70,15 +74,16 @@ int ip_output(net_if_t *dev, uint8_t protocol, uint32_t dst_ip, const uint8_t *p
         memcpy(packet + sizeof(ip_hdr_t), payload, payload_len);
     }
 
-    /* Calculate checksum */
-    ip->check = net_checksum(ip, sizeof(ip_hdr_t));
+    /* net_checksum() returns a host-order value; store it in network order. */
+    ip->check = net_htons(net_checksum(ip, sizeof(ip_hdr_t)));
 
-    /* Resolve destination MAC */
+    /* Resolve the next-hop MAC. Off-subnet destinations go through the
+     * configured gateway; without this, QEMU user networking (10.0.2.0/24
+     * with router 10.0.2.2) could never be reached. */
+    uint32_t next_hop = net_next_hop(dev, dst_ip);
     uint8_t dst_mac[ETH_ALEN];
-    if (arp_resolve(dst_ip, dst_mac) != 0) {
-        /* Send ARP request first */
-        arp_request(dev, dst_ip);
-        /* Broadcast for now - ARP reply will update cache */
+    if (arp_resolve(next_hop, dst_mac) != 0) {
+        arp_request(dev, next_hop);
         memset(dst_mac, 0xFF, ETH_ALEN);
     }
 

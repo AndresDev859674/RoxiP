@@ -81,8 +81,8 @@ int arp_input(net_if_t *dev, const uint8_t *buf, uint32_t len) {
     uint16_t ptype = net_htons(arp->ptype);
     uint16_t oper  = net_htons(arp->oper);
 
-    /* Only process Ethernet/IP ARP */
-    if (htype != ARPHRD_ETHER || ptype != net_htons(ETH_P_IP)) return -1;
+    /* Only process Ethernet/IP ARP. ptype/oper are already in host order. */
+    if (htype != ARPHRD_ETHER || ptype != ETH_P_IP) return -1;
     if (arp->hlen != ETH_ALEN || arp->plen != 4) return -1;
 
     /* Update our cache with sender info */

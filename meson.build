@@ -81,6 +81,9 @@ endif
 
 if network_enabled
   c_args += ['-DNETWORK_ENABLED', '-DNET_ARP', '-DNET_IP', '-DNET_ICMP', '-DNET_UDP']
+  if board == 'versatilepb'
+    c_args += ['-DNET_SMC91C111']
+  endif
   message('Network support enabled')
 endif
 
@@ -182,6 +185,13 @@ if network_enabled
       command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
     ),
   ]
+  if board == 'versatilepb'
+    driver_objs += custom_target('driver-smc91c111-obj',
+      input: files('src/drivers/smc91c111.c'),
+      output: 'smc91c111.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    )
+  endif
 
   net_objs = [
     custom_target('net-net-obj',
@@ -207,6 +217,11 @@ if network_enabled
     custom_target('net-udp-obj',
       input: files('src/net/udp.c'),
       output: 'udp.o',
+      command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
+    ),
+    custom_target('net-tftp-obj',
+      input: files('src/net/tftp.c'),
+      output: 'tftp.o',
       command: [armgcc] + c_args + ['-c', '@INPUT@', '-o', '@OUTPUT@'],
     ),
   ]

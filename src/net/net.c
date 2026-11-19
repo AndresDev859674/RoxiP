@@ -302,6 +302,94 @@ void net_init(void) {
 }
 
 /* ----------------------------------------------------------------------
+ * Routing, polling and blocking helpers
+ * ---------------------------------------------------------------------- */
+
+uint32_t net_next_hop(net_if_t *dev, uint32_t dst_ip) {
+    if (!dev) return dst_ip;
+    if (dev->netmask && dev->gateway &&
+        ((dst_ip & dev->netmask) != (dev->ip & dev->netmask))) {
+        return dev->gateway;
+    }
+    return dst_ip;
+}
+
+void net_poll(void) {
+    net_if_t *dev = net_if_list;
+
+    while (dev) {
+        if (dev->ops && dev->ops->receive) {
+            uint8_t frame[ETH_FRAME_LEN];
+            uint32_t len = 0;
+            unsigned int budget = 8;
+
+            while (budget-- && dev->ops->receive(frame, sizeof(frame), &len) == 0
+                   && len > 0) {
+                net_rx(dev, frame, len);
+            }
+        }
+        dev = dev->next;
+    }
+}
+
+int net_arp_wait(net_if_t *dev, uint32_t ip, uint8_t *mac, unsigned int timeout_ms) {
+    if (!dev || !mac) return -1;
+    if (arp_resolve(ip, mac) == 0) return 0;
+
+    unsigned int steps = (timeout_ms / 10u) + 1u;
+    for (unsigned int i = 0; i < steps; i++) {
+        net_poll();
+        if (arp_resolve(ip, mac) == 0) return 0;
+        if ((i % 50u) == 0u) arp_request(dev, ip);
+        delay_ms(10);
+    }
+    return -1;
+}
+
+int net_ping(const char *ip_str) {
+    if (!ip_str || ip_str[0] == '\0') {
+        term_add_line("ping: usage: ping <ip-address>");
+        return -1;
+    }
+
+    net_if_t *dev = net_if_get_by_name("eth0");
+    if (!dev) {
+        term_add_line("ping: no network interface available");
+        return -1;
+    }
+    if (dev->state != NET_IF_UP && net_if_up(dev) != 0) {
+        term_add_line("ping: could not bring the interface up");
+        return -1;
+    }
+
+    char line[96];
+    unsigned int n = 0;
+    const char *prefix = "[NET] ping ";
+    while (*prefix && n + 1u < sizeof(line)) line[n++] = *prefix++;
+    for (const char *p = ip_str; *p && n + 1u < sizeof(line); ) line[n++] = *p++;
+    line[n] = '\0';
+    dbg_log(line);
+
+    uint32_t ip = net_ip_string_to_addr(ip_str);
+    uint8_t mac[ETH_ALEN];
+    if (net_arp_wait(dev, net_next_hop(dev, ip), mac, 2000) != 0) {
+        term_add_line("ping: ARP resolution failed");
+        dbg_log("[NET] ping failed: ARP resolution");
+        return -1;
+    }
+
+    int ret = icmp_ping(dev, ip, 3000);
+    if (ret == 0) {
+        term_add_line("ping: reply received");
+        dbg_log("[NET] ping: reply received");
+    } else {
+        term_add_line("ping: no reply (timeout)");
+        dbg_log("[NET] ping: no reply (timeout)");
+    }
+    return ret;
+}
+
+/* ----------------------------------------------------------------------
  * Network boot connection (called during bootloader phase)
  *
  * RoxiP currently ships an NE2000 Ethernet driver (wired) and no 802.11

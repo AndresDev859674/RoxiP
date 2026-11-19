@@ -129,11 +129,35 @@ int net_tx(net_if_t *dev, uint16_t proto, const uint8_t *dst, const uint8_t *buf
 /* Protocol handler forward declarations */
 int arp_input(net_if_t *dev, const uint8_t *buf, uint32_t len);
 int ip_input(net_if_t *dev, const uint8_t *buf, uint32_t len);
-int icmp_input(net_if_t *dev, const uint8_t *buf, uint8_t ihl, uint16_t total_len);
-int udp_input(net_if_t *dev, const uint8_t *buf, uint8_t ihl, uint16_t total_len);
+int icmp_input(net_if_t *dev, const uint8_t *buf, uint16_t total_len, uint32_t src_ip);
+int udp_input(net_if_t *dev, const uint8_t *buf, uint16_t total_len, uint32_t src_ip);
 int arp_resolve(uint32_t ip, uint8_t *mac);
 int arp_request(net_if_t *dev, uint32_t target_ip);
 int ip_output(net_if_t *dev, uint8_t protocol, uint32_t dst_ip, const uint8_t *payload, uint32_t payload_len);
+
+/* Gateway-aware next hop for a destination address. */
+uint32_t net_next_hop(net_if_t *dev, uint32_t dst_ip);
+
+/* Drive packet reception from the kernel/shell. Network replies are
+ * processed synchronously; no interrupts are used by the current drivers. */
+void net_poll(void);
+
+/* Send an ARP request and poll until the answer arrives or timeout_ms
+ * elapses. Returns 0 and fills mac on success. */
+int net_arp_wait(net_if_t *dev, uint32_t ip, uint8_t *mac, unsigned int timeout_ms);
+
+/* Transport APIs */
+int udp_output(net_if_t *dev, uint16_t src_port, uint16_t dst_port,
+               uint32_t dst_ip, const uint8_t *payload, uint32_t payload_len);
+
+typedef int (*udp_handler_fn)(net_if_t *dev, uint32_t src_ip,
+                              uint16_t src_port, const uint8_t *data,
+                              uint16_t len, void *ctx);
+int udp_bind(uint16_t local_port, udp_handler_fn handler, void *ctx);
+void udp_unbind(uint16_t local_port);
+
+int icmp_echo(net_if_t *dev, uint32_t dst_ip);
+int icmp_ping(net_if_t *dev, uint32_t dst_ip, unsigned int timeout_ms);
 
 /* Network initialization */
 void net_init(void);
@@ -141,6 +165,11 @@ void net_init(void);
 /* Network boot connection (called during bootloader phase) */
 int network_boot_connect(void);
 void network_print_status(void);
+
+/* Shell/network application helpers */
+int net_ping(const char *ip_str);
+int tftp_get(const char *server_ip, const char *remote_file,
+             const char *local_file);
 
 /* Helpers */
 uint16_t net_htons(uint16_t val);

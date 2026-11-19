@@ -37,6 +37,10 @@ int net_device_send(net_device_t *dev, const uint8_t *buf, uint32_t len);
 int ne2000_init_driver(void);
 void ne2000_poll(void);
 
+/* SMC91C111 Ethernet (Versatile/PB onboard NIC) */
+int smc91c111_init_driver(void);
+void smc91c111_poll(void);
+
 #endif /* NETWORK_ENABLED */
 
 #endif /* ROXIP_DRIVERS_NETWORK_H */

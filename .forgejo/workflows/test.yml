@@ -16,7 +16,7 @@ jobs:
         board: [ versatilepb ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@a130901e9139bf329a3004c224695e8a87e0b86b # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install dependencies
         run: |
@@ -54,7 +54,7 @@ jobs:
     runs-on: codeberg-medium
     steps:
       - name: Checkout repository
-        uses: actions/checkout@a130901e9139bf329a3004c224695e8a87e0b86b # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install dependencies
         run: |
